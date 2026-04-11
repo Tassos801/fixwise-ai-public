@@ -33,6 +33,10 @@ final class BackendConfigurationStore: ObservableObject {
         backendWebSocketURL.absoluteString
     }
 
+    var deploymentBadgeText: String? {
+        AppConfig.deploymentBadgeText(for: backendHTTPURL)
+    }
+
     var deviceTestingWarning: String? {
 #if targetEnvironment(simulator)
         nil

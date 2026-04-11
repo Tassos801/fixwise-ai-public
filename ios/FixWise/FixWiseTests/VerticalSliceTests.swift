@@ -113,4 +113,14 @@ final class VerticalSliceTests: XCTestCase {
         XCTAssertTrue(AppConfig.isLoopbackHost(URL(string: "ws://localhost:8000/ws/session")!))
         XCTAssertFalse(AppConfig.isLoopbackHost(URL(string: "https://api.fixwise.app")!))
     }
+
+    func testDeploymentBadgeRecognizesHostedBetaBackend() {
+        XCTAssertEqual(
+            AppConfig.deploymentBadgeText(for: URL(string: "https://fixwise-backend.onrender.com")!),
+            "Hosted Beta"
+        )
+        XCTAssertNil(
+            AppConfig.deploymentBadgeText(for: URL(string: "https://example.com")!)
+        )
+    }
 }

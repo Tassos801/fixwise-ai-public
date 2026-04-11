@@ -27,7 +27,12 @@ struct CameraSessionView: View {
 
             VStack(spacing: 16) {
                 HStack(alignment: .top) {
-                    sessionInfoBadge
+                    VStack(alignment: .leading, spacing: 8) {
+                        sessionInfoBadge
+                        if let deploymentBadgeText = backendConfiguration.deploymentBadgeText {
+                            deploymentBadge(text: deploymentBadgeText)
+                        }
+                    }
                     Spacer()
                     settingsButton
                     stepCounter
@@ -99,6 +104,15 @@ struct CameraSessionView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(.ultraThinMaterial, in: Capsule())
+    }
+
+    private func deploymentBadge(text: String) -> some View {
+        Text(text)
+            .font(.caption2.weight(.semibold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.green.opacity(0.75), in: Capsule())
     }
 
     private var settingsButton: some View {

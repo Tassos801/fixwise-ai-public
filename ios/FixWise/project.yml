@@ -25,8 +25,8 @@ targets:
         INFOPLIST_KEY_NSCameraUsageDescription: FixWise uses the camera to inspect a task and place guidance overlays.
         INFOPLIST_KEY_NSMicrophoneUsageDescription: FixWise uses the microphone for tap-to-talk guidance requests.
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: FixWise transcribes your spoken question into AI prompts.
-        INFOPLIST_KEY_FIXWISE_BACKEND_HTTP_URL: https://api.fixwise.ai
-        INFOPLIST_KEY_FIXWISE_BACKEND_WS_URL: wss://api.fixwise.ai/ws/session
+        INFOPLIST_KEY_FIXWISE_BACKEND_HTTP_URL: https://fixwise-backend.onrender.com
+        INFOPLIST_KEY_FIXWISE_BACKEND_WS_URL: wss://fixwise-backend.onrender.com/ws/session
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         IPHONEOS_DEPLOYMENT_TARGET: 17.0

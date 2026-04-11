@@ -1,8 +1,9 @@
 import Foundation
 
 enum AppConfig {
-    static let defaultBackendHTTPURLString = "https://api.fixwise.ai"
-    static let defaultBackendWebSocketURLString = "wss://api.fixwise.ai/ws/session"
+    static let defaultBackendHTTPURLString = "https://fixwise-backend.onrender.com"
+    static let defaultBackendWebSocketURLString = "wss://fixwise-backend.onrender.com/ws/session"
+    static let hostedBetaHost = "fixwise-backend.onrender.com"
 
     static var backendHTTPURL: URL {
         url(for: "FIXWISE_BACKEND_HTTP_URL", fallback: defaultBackendHTTPURLString)
@@ -38,5 +39,13 @@ enum AppConfig {
     static func isLoopbackHost(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         return host == "127.0.0.1" || host == "localhost"
+    }
+
+    static func deploymentBadgeText(for url: URL) -> String? {
+        guard let host = url.host?.lowercased() else { return nil }
+        if host == hostedBetaHost {
+            return "Hosted Beta"
+        }
+        return nil
     }
 }

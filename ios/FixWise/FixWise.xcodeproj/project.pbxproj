@@ -286,8 +286,8 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = FixWise;
-				INFOPLIST_KEY_FIXWISE_BACKEND_HTTP_URL = "https://api.fixwise.ai";
-				INFOPLIST_KEY_FIXWISE_BACKEND_WS_URL = "wss://api.fixwise.ai/ws/session";
+				INFOPLIST_KEY_FIXWISE_BACKEND_HTTP_URL = "https://fixwise-backend.onrender.com";
+				INFOPLIST_KEY_FIXWISE_BACKEND_WS_URL = "wss://fixwise-backend.onrender.com/ws/session";
 				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "FixWise uses the camera to inspect a task and place guidance overlays.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "FixWise uses the microphone for tap-to-talk guidance requests.";
@@ -472,8 +472,8 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = FixWise;
-				INFOPLIST_KEY_FIXWISE_BACKEND_HTTP_URL = "https://api.fixwise.ai";
-				INFOPLIST_KEY_FIXWISE_BACKEND_WS_URL = "wss://api.fixwise.ai/ws/session";
+				INFOPLIST_KEY_FIXWISE_BACKEND_HTTP_URL = "https://fixwise-backend.onrender.com";
+				INFOPLIST_KEY_FIXWISE_BACKEND_WS_URL = "wss://fixwise-backend.onrender.com/ws/session";
 				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "FixWise uses the camera to inspect a task and place guidance overlays.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "FixWise uses the microphone for tap-to-talk guidance requests.";

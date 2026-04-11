@@ -157,6 +157,19 @@ struct SettingsView: View {
 
     private var backendSection: some View {
         Section {
+            if let deploymentBadgeText = backendConfiguration.deploymentBadgeText {
+                HStack {
+                    Text("Deployment")
+                    Spacer()
+                    Text(deploymentBadgeText)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.green)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.green.opacity(0.15), in: Capsule())
+                }
+            }
+
             TextField("https://your-backend.example.com", text: $backendConfiguration.backendHTTPURLString)
                 .keyboardType(.URL)
                 .textInputAutocapitalization(.never)

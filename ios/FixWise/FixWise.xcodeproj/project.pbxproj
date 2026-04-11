@@ -1,0 +1,528 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A1B2C3D40123456789ABCDEF /* BackendConfigurationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D40123456789ABCDEF /* BackendConfigurationStore.swift */; };
+		A1B2C3D50123456789ABCDEF /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D50123456789ABCDEF /* AuthStore.swift */; };
+		A1B2C3D60123456789ABCDEF /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D60123456789ABCDEF /* KeychainStore.swift */; };
+		A1B2C3D70123456789ABCDEF /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D70123456789ABCDEF /* OnboardingView.swift */; };
+		A1B2C3D80123456789ABCDEF /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B2C3D80123456789ABCDEF /* SettingsView.swift */; };
+		0669CA87F0DC70C8062D30D3 /* AppConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64A690DE0D4C9E8947E2DB8E /* AppConfig.swift */; };
+		174786BC8F46734B5676D154 /* TypedPromptSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97A912F3F6DCE6B4D9F83C92 /* TypedPromptSheet.swift */; };
+		3200CE3514EDC7EF3F84DBAF /* SessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5497AF1ADDD0497CDCEE7F3A /* SessionState.swift */; };
+		4291CB81F00AC844E37765B0 /* WebSocketService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33B1AEE7E43F7CBBE3DB3EAB /* WebSocketService.swift */; };
+		5A969F4F0343368BDA9D772F /* ARKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F84EB4C50E85703ADBFD3A1 /* ARKit.framework */; };
+		64E93E6610CD2FB11B254E52 /* CameraSessionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24F53BEC4EE55132157B16E0 /* CameraSessionView.swift */; };
+		6641DC18B89BD0C910C0BD03 /* VerticalSliceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D147FBA511C75669CBC8906E /* VerticalSliceTests.swift */; };
+		6B29BDCDE180E8FF56946715 /* CameraService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 352E48837EC89A1644630E29 /* CameraService.swift */; };
+		8400F5F5391719D5E61BD085 /* FixWiseApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 296EA037033DF2CC7A1235A8 /* FixWiseApp.swift */; };
+		AB37DB7D63AC44EAC3956392 /* SpeechCaptureService.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACDED819E89101BA5DD576D1 /* SpeechCaptureService.swift */; };
+		C6BD1E20B02E98AC04602983 /* Speech.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 81954F8C3906B24CBBAB16EE /* Speech.framework */; };
+		D43943A0B7192F92FFDC5AC4 /* Annotation.swift in Sources */ = {isa = PBXBuildFile; fileRef = A22C404827A809D391492408 /* Annotation.swift */; };
+		D636EACC5C385386A948E5BE /* SpeechPlaybackService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CC435152AA3BD0DC5FE5F32 /* SpeechPlaybackService.swift */; };
+		E353AD40B2075DFAEDB67506 /* AVFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 817585BAAFBA40FC54838084 /* AVFoundation.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		D5231C809E6695942E06F7AF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A4B462DA8499516F0D8A0AB9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EF442E78099461DA148BFBAE;
+			remoteInfo = FixWise;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		05C29C6A9746C486C4140736 /* FixWise.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = FixWise.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		1C81E47A4BBE903208430CC2 /* FixWiseTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FixWiseTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		24F53BEC4EE55132157B16E0 /* CameraSessionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraSessionView.swift; sourceTree = "<group>"; };
+		296EA037033DF2CC7A1235A8 /* FixWiseApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FixWiseApp.swift; sourceTree = "<group>"; };
+		33B1AEE7E43F7CBBE3DB3EAB /* WebSocketService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketService.swift; sourceTree = "<group>"; };
+		352E48837EC89A1644630E29 /* CameraService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraService.swift; sourceTree = "<group>"; };
+		4F84EB4C50E85703ADBFD3A1 /* ARKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ARKit.framework; path = System/Library/Frameworks/ARKit.framework; sourceTree = SDKROOT; };
+		5497AF1ADDD0497CDCEE7F3A /* SessionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionState.swift; sourceTree = "<group>"; };
+		64A690DE0D4C9E8947E2DB8E /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
+		7CC435152AA3BD0DC5FE5F32 /* SpeechPlaybackService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechPlaybackService.swift; sourceTree = "<group>"; };
+		817585BAAFBA40FC54838084 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
+		81954F8C3906B24CBBAB16EE /* Speech.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Speech.framework; path = System/Library/Frameworks/Speech.framework; sourceTree = SDKROOT; };
+		97A912F3F6DCE6B4D9F83C92 /* TypedPromptSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypedPromptSheet.swift; sourceTree = "<group>"; };
+		A22C404827A809D391492408 /* Annotation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Annotation.swift; sourceTree = "<group>"; };
+		ACDED819E89101BA5DD576D1 /* SpeechCaptureService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechCaptureService.swift; sourceTree = "<group>"; };
+		B1B2C3D40123456789ABCDEF /* BackendConfigurationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendConfigurationStore.swift; sourceTree = "<group>"; };
+		B1B2C3D50123456789ABCDEF /* AuthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthStore.swift; sourceTree = "<group>"; };
+		B1B2C3D60123456789ABCDEF /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		B1B2C3D70123456789ABCDEF /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		B1B2C3D80123456789ABCDEF /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		D147FBA511C75669CBC8906E /* VerticalSliceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerticalSliceTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		36215B5053E1A7BBFAFA6D30 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5A969F4F0343368BDA9D772F /* ARKit.framework in Frameworks */,
+				E353AD40B2075DFAEDB67506 /* AVFoundation.framework in Frameworks */,
+				C6BD1E20B02E98AC04602983 /* Speech.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		2263BA16C0B642C9D1FC9D63 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				64A690DE0D4C9E8947E2DB8E /* AppConfig.swift */,
+				B1B2C3D40123456789ABCDEF /* BackendConfigurationStore.swift */,
+			);
+			path = Config;
+			sourceTree = "<group>";
+		};
+		27889445840B492ED5BF08DD /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				24F53BEC4EE55132157B16E0 /* CameraSessionView.swift */,
+				B1B2C3D70123456789ABCDEF /* OnboardingView.swift */,
+				B1B2C3D80123456789ABCDEF /* SettingsView.swift */,
+				97A912F3F6DCE6B4D9F83C92 /* TypedPromptSheet.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		4CBA03E571127A746E1FA426 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				A22C404827A809D391492408 /* Annotation.swift */,
+				5497AF1ADDD0497CDCEE7F3A /* SessionState.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		89B7B8E4F9081EFCD859B172 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				B1B2C3D50123456789ABCDEF /* AuthStore.swift */,
+				352E48837EC89A1644630E29 /* CameraService.swift */,
+				B1B2C3D60123456789ABCDEF /* KeychainStore.swift */,
+				ACDED819E89101BA5DD576D1 /* SpeechCaptureService.swift */,
+				7CC435152AA3BD0DC5FE5F32 /* SpeechPlaybackService.swift */,
+				33B1AEE7E43F7CBBE3DB3EAB /* WebSocketService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		8AAF45B513D5A0FD52229D90 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				4F84EB4C50E85703ADBFD3A1 /* ARKit.framework */,
+				817585BAAFBA40FC54838084 /* AVFoundation.framework */,
+				81954F8C3906B24CBBAB16EE /* Speech.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		9559A8DA0501389BA14D6C35 = {
+			isa = PBXGroup;
+			children = (
+				CA9BF591416F7F4C68D72B54 /* FixWise */,
+				ABE33858588AB336C7F04250 /* FixWiseTests */,
+				8AAF45B513D5A0FD52229D90 /* Frameworks */,
+				E8D2FE41FF1468A671BBEF94 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		ABE33858588AB336C7F04250 /* FixWiseTests */ = {
+			isa = PBXGroup;
+			children = (
+				D147FBA511C75669CBC8906E /* VerticalSliceTests.swift */,
+			);
+			path = FixWiseTests;
+			sourceTree = "<group>";
+		};
+		CA9BF591416F7F4C68D72B54 /* FixWise */ = {
+			isa = PBXGroup;
+			children = (
+				296EA037033DF2CC7A1235A8 /* FixWiseApp.swift */,
+				2263BA16C0B642C9D1FC9D63 /* Config */,
+				4CBA03E571127A746E1FA426 /* Models */,
+				89B7B8E4F9081EFCD859B172 /* Services */,
+				27889445840B492ED5BF08DD /* Views */,
+			);
+			path = FixWise;
+			sourceTree = "<group>";
+		};
+		E8D2FE41FF1468A671BBEF94 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				05C29C6A9746C486C4140736 /* FixWise.app */,
+				1C81E47A4BBE903208430CC2 /* FixWiseTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		71141040DFBBF52DE7F29A87 /* FixWiseTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 657D117605ABDA8C800F7D56 /* Build configuration list for PBXNativeTarget "FixWiseTests" */;
+			buildPhases = (
+				FF881AEAC8B5CD38092C3640 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				4D5CED3B1094867317E27051 /* PBXTargetDependency */,
+			);
+			name = FixWiseTests;
+			packageProductDependencies = (
+			);
+			productName = FixWiseTests;
+			productReference = 1C81E47A4BBE903208430CC2 /* FixWiseTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		EF442E78099461DA148BFBAE /* FixWise */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B3FD7C6C29BB7A82D8977CEC /* Build configuration list for PBXNativeTarget "FixWise" */;
+			buildPhases = (
+				01050882AB5F507EF2783C71 /* Sources */,
+				36215B5053E1A7BBFAFA6D30 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FixWise;
+			packageProductDependencies = (
+			);
+			productName = FixWise;
+			productReference = 05C29C6A9746C486C4140736 /* FixWise.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A4B462DA8499516F0D8A0AB9 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+				};
+			};
+			buildConfigurationList = 324AE21C1AED466D66C3F419 /* Build configuration list for PBXProject "FixWise" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 9559A8DA0501389BA14D6C35;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = E8D2FE41FF1468A671BBEF94 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				EF442E78099461DA148BFBAE /* FixWise */,
+				71141040DFBBF52DE7F29A87 /* FixWiseTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		01050882AB5F507EF2783C71 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1B2C3D50123456789ABCDEF /* AuthStore.swift in Sources */,
+				D43943A0B7192F92FFDC5AC4 /* Annotation.swift in Sources */,
+				0669CA87F0DC70C8062D30D3 /* AppConfig.swift in Sources */,
+				A1B2C3D40123456789ABCDEF /* BackendConfigurationStore.swift in Sources */,
+				6B29BDCDE180E8FF56946715 /* CameraService.swift in Sources */,
+				64E93E6610CD2FB11B254E52 /* CameraSessionView.swift in Sources */,
+				8400F5F5391719D5E61BD085 /* FixWiseApp.swift in Sources */,
+				A1B2C3D60123456789ABCDEF /* KeychainStore.swift in Sources */,
+				A1B2C3D70123456789ABCDEF /* OnboardingView.swift in Sources */,
+				3200CE3514EDC7EF3F84DBAF /* SessionState.swift in Sources */,
+				A1B2C3D80123456789ABCDEF /* SettingsView.swift in Sources */,
+				AB37DB7D63AC44EAC3956392 /* SpeechCaptureService.swift in Sources */,
+				D636EACC5C385386A948E5BE /* SpeechPlaybackService.swift in Sources */,
+				174786BC8F46734B5676D154 /* TypedPromptSheet.swift in Sources */,
+				4291CB81F00AC844E37765B0 /* WebSocketService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FF881AEAC8B5CD38092C3640 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6641DC18B89BD0C910C0BD03 /* VerticalSliceTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		4D5CED3B1094867317E27051 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EF442E78099461DA148BFBAE /* FixWise */;
+			targetProxy = D5231C809E6695942E06F7AF /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		15BE4C5AC6D3A59B1FB5DBC7 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = FixWise;
+				INFOPLIST_KEY_FIXWISE_BACKEND_HTTP_URL = "https://api.fixwise.ai";
+				INFOPLIST_KEY_FIXWISE_BACKEND_WS_URL = "wss://api.fixwise.ai/ws/session";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "FixWise uses the camera to inspect a task and place guidance overlays.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "FixWise uses the microphone for tap-to-talk guidance requests.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "FixWise transcribes your spoken question into AI prompts.";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.fixwise.ai;
+				PRODUCT_NAME = FixWise;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		6B1816D5CCCBCDF5E0A1C802 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.fixwise.ai.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FixWise.app/FixWise";
+			};
+			name = Debug;
+		};
+		6C7DD058E739CBF091B43EB5 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.fixwise.ai.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FixWise.app/FixWise";
+			};
+			name = Release;
+		};
+		7AF2892E874CD4E102C3D787 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		84ED750B4F40A36C8D46CD1F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		A42CA6F46AD54691547BC7C6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = FixWise;
+				INFOPLIST_KEY_FIXWISE_BACKEND_HTTP_URL = "https://api.fixwise.ai";
+				INFOPLIST_KEY_FIXWISE_BACKEND_WS_URL = "wss://api.fixwise.ai/ws/session";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "FixWise uses the camera to inspect a task and place guidance overlays.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "FixWise uses the microphone for tap-to-talk guidance requests.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "FixWise transcribes your spoken question into AI prompts.";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.fixwise.ai;
+				PRODUCT_NAME = FixWise;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		324AE21C1AED466D66C3F419 /* Build configuration list for PBXProject "FixWise" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7AF2892E874CD4E102C3D787 /* Debug */,
+				84ED750B4F40A36C8D46CD1F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		657D117605ABDA8C800F7D56 /* Build configuration list for PBXNativeTarget "FixWiseTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6B1816D5CCCBCDF5E0A1C802 /* Debug */,
+				6C7DD058E739CBF091B43EB5 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B3FD7C6C29BB7A82D8977CEC /* Build configuration list for PBXNativeTarget "FixWise" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A42CA6F46AD54691547BC7C6 /* Debug */,
+				15BE4C5AC6D3A59B1FB5DBC7 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A4B462DA8499516F0D8A0AB9 /* Project object */;
+}

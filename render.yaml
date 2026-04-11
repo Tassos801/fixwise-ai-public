@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: fixwise-backend
+    runtime: python
+    plan: starter
+    region: frankfurt
+    buildCommand: cd backend && pip install .
+    startCommand: cd backend && uvicorn fixwise_backend.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    disk:
+      name: fixwise-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: FIXWISE_ENVIRONMENT
+        value: production
+      - key: FIXWISE_DATABASE_PATH
+        value: /data/fixwise.db
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: FIXWISE_ALLOWED_ORIGINS
+        sync: false
+      - key: FIXWISE_JWT_SECRET
+        sync: false
+      - key: FIXWISE_MASTER_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+
+  - type: web
+    name: fixwise-dashboard
+    runtime: static
+    plan: free
+    region: frankfurt
+    buildCommand: cd web/fixwise-dashboard && npm ci && npm run build
+    staticPublishPath: ./web/fixwise-dashboard/dist
+    pullRequestPreviewsEnabled: false
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

@@ -1,0 +1,17 @@
+.DS_Store
+.git
+.gitignore
+.pytest_cache
+.mypy_cache
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+fixwise.db
+tests
+docs
+src/**/__pycache__
+src/**/*.pyc
+src/fixwise_backend.egg-info

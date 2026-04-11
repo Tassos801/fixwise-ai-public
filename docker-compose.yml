@@ -1,0 +1,25 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      FIXWISE_AI_MODE: mock
+      FIXWISE_ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      FIXWISE_DATABASE_PATH: /data/fixwise.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - fixwise-backend-data:/data
+
+  web:
+    build:
+      context: ./web/fixwise-dashboard
+      dockerfile: Dockerfile
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  fixwise-backend-data:

@@ -17,6 +17,7 @@ struct SettingsView: View {
     @State private var isTestingConnection = false
     @State private var isSavingKey = false
     @State private var isRemovingKey = false
+    @State private var backendHealth: BackendHealth?
     @State private var alertItem: AlertItem?
 
     init(allowsDismissal: Bool = true) {
@@ -170,6 +171,10 @@ struct SettingsView: View {
                 }
             }
 
+            if let backendHealth {
+                backendHealthSummary(backendHealth)
+            }
+
             TextField("https://your-backend.example.com", text: $backendConfiguration.backendHTTPURLString)
                 .keyboardType(.URL)
                 .textInputAutocapitalization(.never)
@@ -203,6 +208,27 @@ struct SettingsView: View {
             Text("Backend")
         } footer: {
             Text("Use a public HTTPS backend URL for device testing. The live session will derive its WSS endpoint automatically.")
+        }
+    }
+
+    private func backendHealthSummary(_ health: BackendHealth) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            LabeledContent("Backend Status", value: health.status.capitalized)
+            LabeledContent("AI Mode", value: health.displayProviderName)
+
+            if let environment = health.environment {
+                LabeledContent("Environment", value: environment.capitalized)
+            }
+
+            if let model = health.ai?.model, !model.isEmpty {
+                LabeledContent("Model", value: model)
+            }
+
+            if let hint = health.guidanceHint(hasSavedAPIKey: authStore.user?.hasApiKey ?? false) {
+                Text(hint)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -286,22 +312,50 @@ struct SettingsView: View {
         defer { isTestingConnection = false }
 
         do {
-            let (_, response) = try await URLSession.shared.data(for: backendConfiguration.request(path: "/health"))
+            let (data, response) = try await URLSession.shared.data(for: backendConfiguration.request(path: "/health"))
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw URLError(.badServerResponse)
             }
 
             if httpResponse.statusCode == 200 {
-                alertItem = AlertItem(title: "Connected", message: "Backend is reachable and healthy.")
+                let decodedHealth = try? JSONDecoder().decode(BackendHealth.self, from: data)
+                backendHealth = decodedHealth
+                alertItem = AlertItem(
+                    title: "Connected",
+                    message: connectionSuccessMessage(for: decodedHealth)
+                )
             } else {
+                backendHealth = nil
                 alertItem = AlertItem(
                     title: "Connection Failed",
                     message: "Server returned HTTP \(httpResponse.statusCode)."
                 )
             }
         } catch {
+            backendHealth = nil
             alertItem = AlertItem(title: "Connection Failed", message: error.localizedDescription)
         }
+    }
+
+    private func connectionSuccessMessage(for health: BackendHealth?) -> String {
+        guard let health else {
+            return "Backend is reachable and healthy."
+        }
+
+        var lines = [
+            "Backend is reachable and healthy.",
+            "AI Mode: \(health.displayProviderName)"
+        ]
+
+        if let environment = health.environment {
+            lines.append("Environment: \(environment.capitalized)")
+        }
+
+        if let hint = health.guidanceHint(hasSavedAPIKey: authStore.user?.hasApiKey ?? false) {
+            lines.append(hint)
+        }
+
+        return lines.joined(separator: "\n")
     }
 
     private func validateAndSaveAPIKey() async {
@@ -416,6 +470,56 @@ private struct AlertItem: Identifiable {
     let id = UUID()
     let title: String
     let message: String
+}
+
+private struct BackendHealth: Decodable {
+    let status: String
+    let environment: String?
+    let provider: String?
+    let liveReady: Bool?
+    let ai: AIStatus?
+
+    struct AIStatus: Decodable {
+        let provider: String?
+        let liveReady: Bool?
+        let model: String?
+    }
+
+    var effectiveProvider: String {
+        (ai?.provider ?? provider ?? "unknown").lowercased()
+    }
+
+    var isLiveReady: Bool {
+        ai?.liveReady ?? liveReady ?? false
+    }
+
+    var displayProviderName: String {
+        switch effectiveProvider {
+        case "mock":
+            return "Mock Guidance"
+        case "openai":
+            return isLiveReady ? "OpenAI Live" : "OpenAI"
+        case "unavailable":
+            return "Unavailable"
+        default:
+            return effectiveProvider.capitalized
+        }
+    }
+
+    func guidanceHint(hasSavedAPIKey: Bool) -> String? {
+        if effectiveProvider == "mock" {
+            if hasSavedAPIKey {
+                return "A BYOK key is saved on your account, but this backend is still serving mock guidance right now."
+            }
+            return "This backend is healthy but still using mock guidance. Sign in and save a BYOK OpenAI key to enable live AI."
+        }
+
+        if !isLiveReady {
+            return "Live AI is not fully configured on this backend yet."
+        }
+
+        return nil
+    }
 }
 
 private extension String {

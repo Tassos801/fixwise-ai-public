@@ -2,20 +2,16 @@ services:
   - type: web
     name: fixwise-backend
     runtime: python
-    plan: starter
+    plan: free
     region: frankfurt
     buildCommand: cd backend && pip install .
     startCommand: cd backend && uvicorn fixwise_backend.app:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
-    disk:
-      name: fixwise-data
-      mountPath: /data
-      sizeGB: 1
     envVars:
       - key: FIXWISE_ENVIRONMENT
         value: production
       - key: FIXWISE_DATABASE_PATH
-        value: /data/fixwise.db
+        value: /opt/render/project/src/backend/fixwise.db
       - key: OPENAI_MODEL
         value: gpt-4o-mini
       - key: FIXWISE_ALLOWED_ORIGINS

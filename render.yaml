@@ -30,8 +30,6 @@ services:
   - type: web
     name: fixwise-dashboard
     runtime: static
-    plan: free
-    region: frankfurt
     buildCommand: cd web/fixwise-dashboard && npm ci && npm run build
     staticPublishPath: ./web/fixwise-dashboard/dist
     pullRequestPreviewsEnabled: false

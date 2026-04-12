@@ -25,6 +25,28 @@ class ConfigTests(unittest.TestCase):
         self.assertIn("FIXWISE_JWT_SECRET", str(ctx.exception))
         self.assertIn("FIXWISE_MASTER_KEY", str(ctx.exception))
 
+    def test_settings_from_env_supports_gemma_provider(self):
+        with patch.dict(
+            os.environ,
+            {
+                "FIXWISE_AI_PROVIDER": "gemma",
+                "GEMMA_API_KEY": "google-test-key",
+                "GEMMA_MODEL": "gemma-4-31b-it",
+                "FIXWISE_JWT_SECRET": "x" * 32,
+                "FIXWISE_MASTER_KEY": "ab" * 32,
+            },
+            clear=True,
+        ):
+            settings = Settings.from_env()
+
+        self.assertEqual(settings.ai_provider, "gemma")
+        self.assertEqual(settings.gemma_api_key, "google-test-key")
+        self.assertEqual(settings.active_ai_model, "gemma-4-31b-it")
+        self.assertEqual(
+            settings.active_ai_base_url,
+            "https://generativelanguage.googleapis.com/v1beta",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

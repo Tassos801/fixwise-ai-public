@@ -14,7 +14,9 @@ DEFAULT_ALLOWED_ORIGINS = (
     "http://localhost:5173",
 )
 VALID_AI_MODES = {"auto", "mock", "live"}
+VALID_AI_PROVIDERS = {"openai", "gemma"}
 DEFAULT_DATABASE_PATH = str(Path(__file__).resolve().parents[2] / "fixwise.db")
+DEFAULT_GEMMA_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 DEV_JWT_SECRET = "dev-secret-change-in-production-local"
 MIN_JWT_SECRET_LENGTH = 32
 MIN_MASTER_KEY_BYTES = 32
@@ -39,8 +41,13 @@ class Settings:
     app_version: str = "0.2.0"
     allowed_origins: tuple[str, ...] = DEFAULT_ALLOWED_ORIGINS
     ai_mode: str = "auto"
+    ai_provider: str = "openai"
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
+    openai_base_url: str | None = None
+    gemma_api_key: str | None = None
+    gemma_model: str = "gemma-4-31b-it"
+    gemma_base_url: str = DEFAULT_GEMMA_BASE_URL
     environment: str = "development"
     database_path: str | None = None
     rate_limit_window_seconds: int = 60
@@ -49,6 +56,24 @@ class Settings:
     session_rate_limit_requests: int = 60
     websocket_connect_rate_limit_requests: int = 20
     websocket_prompt_rate_limit_requests: int = 12
+
+    @property
+    def active_ai_api_key(self) -> str | None:
+        if self.ai_provider == "gemma":
+            return self.gemma_api_key
+        return self.openai_api_key
+
+    @property
+    def active_ai_model(self) -> str:
+        if self.ai_provider == "gemma":
+            return self.gemma_model
+        return self.openai_model
+
+    @property
+    def active_ai_base_url(self) -> str | None:
+        if self.ai_provider == "gemma":
+            return (self.gemma_base_url or DEFAULT_GEMMA_BASE_URL).rstrip("/")
+        return self.openai_base_url
 
     def validate(self) -> None:
         """Validate security-critical settings.
@@ -112,16 +137,46 @@ class Settings:
         if ai_mode not in VALID_AI_MODES:
             ai_mode = "auto"
 
+        ai_provider = (
+            os.getenv("FIXWISE_AI_PROVIDER")
+            or os.getenv("AI_PROVIDER")
+            or "openai"
+        ).strip().lower()
+        if ai_provider not in VALID_AI_PROVIDERS:
+            ai_provider = "openai"
+
         return cls(
             allowed_origins=allowed_origins,
             ai_mode=ai_mode,
-            openai_api_key=os.getenv("OPENAI_API_KEY"),
+            ai_provider=ai_provider,
+            openai_api_key=(os.getenv("OPENAI_API_KEY") or "").strip() or None,
             openai_model=(
                 os.getenv("OPENAI_MODEL")
                 or os.getenv("FIXWISE_OPENAI_MODEL")
                 or "gpt-4o-mini"
             ).strip()
             or "gpt-4o-mini",
+            openai_base_url=(os.getenv("OPENAI_BASE_URL") or "").strip() or None,
+            gemma_api_key=(
+                os.getenv("GEMMA_API_KEY")
+                or os.getenv("GOOGLE_API_KEY")
+                or os.getenv("GEMINI_API_KEY")
+                or ""
+            ).strip()
+            or None,
+            gemma_model=(
+                os.getenv("GEMMA_MODEL")
+                or os.getenv("FIXWISE_GEMMA_MODEL")
+                or "gemma-4-31b-it"
+            ).strip()
+            or "gemma-4-31b-it",
+            gemma_base_url=(
+                os.getenv("GEMMA_BASE_URL")
+                or os.getenv("FIXWISE_GEMMA_BASE_URL")
+                or DEFAULT_GEMMA_BASE_URL
+            ).strip()
+            .rstrip("/")
+            or DEFAULT_GEMMA_BASE_URL,
             environment=os.getenv("FIXWISE_ENVIRONMENT", "development").strip()
             or "development",
             database_path=(

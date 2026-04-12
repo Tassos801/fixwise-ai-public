@@ -10,10 +10,10 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
-from .ai import AIProvider, build_ai_provider
+from .ai import AIProvider, build_ai_provider, validate_ai_api_key
 from .auth import (
     AuthResponse,
     LoginRequest,
@@ -48,7 +48,9 @@ from .rate_limit import (
     raise_for_rate_limit,
 )
 from .safety import check_safety
+from .security_headers import SecurityHeadersMiddleware
 from .session_manager import SessionManager
+from .tier_enforcement import check_session_duration, check_session_quota
 
 
 logger = logging.getLogger("fixwise")
@@ -103,6 +105,7 @@ def create_app(
 
     setup_logging(resolved_settings.environment)
     app.add_middleware(RequestIdMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware, environment=resolved_settings.environment)
 
     # ── Health ─────────────────────────────────────────────
 
@@ -129,11 +132,19 @@ def create_app(
         except Exception:
             return False
 
+    def _auth_response_payload(auth_response: AuthResponse) -> dict[str, Any]:
+        """Return a response payload that works for both camelCase and snake_case clients."""
+        payload = auth_response.model_dump(mode="json")
+        user = payload.get("user")
+        if isinstance(user, dict):
+            user["displayName"] = user.get("display_name")
+        return payload
+
     @app.get("/health")
     async def health() -> dict:
         db_ok = await _check_db()
         uptime = round(time.monotonic() - startup_time, 1) if startup_time else 0
-        live_ready = bool(resolved_settings.openai_api_key)
+        live_ready = bool(resolved_settings.active_ai_api_key)
         return {
             "status": "ok" if db_ok else "degraded",
             "name": resolved_settings.app_name,
@@ -144,12 +155,14 @@ def create_app(
             "provider": ai_provider.provider_name,
             "liveReady": live_ready,
             "desiredMode": resolved_settings.ai_mode,
+            "desiredProvider": resolved_settings.ai_provider,
             "liveConfigured": live_ready,
             "ai": {
                 "mode": resolved_settings.ai_mode,
                 "provider": ai_provider.provider_name,
+                "configuredProvider": resolved_settings.ai_provider,
                 "liveReady": live_ready,
-                "model": resolved_settings.openai_model,
+                "model": resolved_settings.active_ai_model,
             },
             "database": {
                 "status": "connected" if db_ok else "unreachable",
@@ -179,7 +192,8 @@ def create_app(
             http_rate_limit_dependency("auth", resolved_settings.auth_rate_limit_requests)
         ),
     ):
-        return await register_user(req, db)
+        auth_response = await register_user(req, db)
+        return JSONResponse(content=_auth_response_payload(auth_response))
 
     @app.post("/api/auth/login", response_model=AuthResponse)
     async def login(
@@ -188,7 +202,8 @@ def create_app(
             http_rate_limit_dependency("auth", resolved_settings.auth_rate_limit_requests)
         ),
     ):
-        return await login_user(req, db)
+        auth_response = await login_user(req, db)
+        return JSONResponse(content=_auth_response_payload(auth_response))
 
     @app.post("/api/auth/refresh", response_model=AuthResponse)
     async def refresh(
@@ -197,7 +212,8 @@ def create_app(
             http_rate_limit_dependency("auth", resolved_settings.auth_rate_limit_requests)
         ),
     ):
-        return await refresh_tokens(req, db)
+        auth_response = await refresh_tokens(req, db)
+        return JSONResponse(content=_auth_response_payload(auth_response))
 
     @app.get("/api/auth/me")
     async def get_me(
@@ -213,6 +229,7 @@ def create_app(
         return {
             "id": user.id,
             "email": user.email,
+            "display_name": user.display_name,
             "displayName": user.display_name,
             "tier": user.tier,
             "hasApiKey": api_key_row is not None,
@@ -230,27 +247,15 @@ def create_app(
         user_id: str = Depends(require_auth),
     ):
         key = req.apiKey.strip()
-        if not key.startswith("sk-") or len(key) < 43:
-            raise HTTPException(status_code=400, detail="Invalid API key format.")
+        if len(key) < 20:
+            raise HTTPException(status_code=400, detail="API key is too short.")
 
-        # Validate with a lightweight OpenAI call
         try:
-            import httpx
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    "https://api.openai.com/v1/models",
-                    headers={"Authorization": f"Bearer {key}"},
-                    timeout=10.0,
-                )
-                if resp.status_code == 401:
-                    raise HTTPException(status_code=400, detail="API key is invalid or revoked.")
-                if resp.status_code != 200:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Could not validate key (OpenAI returned {resp.status_code}).",
-                    )
-        except httpx.RequestError:
-            raise HTTPException(status_code=502, detail="Could not reach OpenAI to validate key.")
+            await validate_ai_api_key(resolved_settings, key)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except ConnectionError as exc:
+            raise HTTPException(status_code=502, detail=str(exc))
 
         encrypted = encrypt_api_key(user_id, key)
         key_mask = mask_api_key(key)
@@ -426,6 +431,20 @@ def create_app(
                     # Lazily create DB session on first frame
                     if session_id is None:
                         session_id = message.sessionId
+                        # Enforce tier session quota
+                        user_row = await db.get_user_by_id(user_id)
+                        user_tier = user_row.tier if user_row else "free"
+                        try:
+                            await check_session_quota(db, user_id, user_tier)
+                        except HTTPException as exc:
+                            await websocket.send_json(
+                                ErrorMessage(
+                                    sessionId=message.sessionId,
+                                    message=exc.detail,
+                                ).model_dump(mode="json")
+                            )
+                            await websocket.close(code=1008)
+                            return
                         await db.create_session(session_id=session_id, user_id=user_id)
 
                     resolved_session_manager.store_frame(
@@ -457,6 +476,32 @@ def create_app(
                         session_id = message.sessionId
                         await db.create_session(session_id=session_id, user_id=user_id)
 
+                    # Check session duration limit
+                    if session_id:
+                        db_session = await db.get_session(session_id)
+                        if db_session and db_session.started_at:
+                            user_row = await db.get_user_by_id(user_id)
+                            user_tier = user_row.tier if user_row else "free"
+                            remaining = check_session_duration(db_session.started_at, user_tier)
+                            if remaining is not None and remaining <= 0:
+                                await db.end_session(session_id)
+                                await websocket.send_json(
+                                    ErrorMessage(
+                                        sessionId=message.sessionId,
+                                        message="Session duration limit reached. Please start a new session or upgrade your plan.",
+                                    ).model_dump(mode="json")
+                                )
+                                await websocket.close(code=1008)
+                                return
+                            elif remaining is not None:
+                                # Warn client about approaching limit
+                                await websocket.send_json(
+                                    ErrorMessage(
+                                        sessionId=message.sessionId,
+                                        message=f"Warning: {remaining} seconds remaining in this session.",
+                                    ).model_dump(mode="json")
+                                )
+
                     safety_issue = check_safety(message.text)
                     if safety_issue:
                         await websocket.send_json(
@@ -485,10 +530,9 @@ def create_app(
                         if api_key_row:
                             try:
                                 user_key = decrypt_api_key(user_id, api_key_row.encrypted_key)
-                                from .ai import OpenAIVisionProvider
-                                active_provider = OpenAIVisionProvider(
-                                    api_key=user_key,
-                                    model=resolved_settings.openai_model,
+                                active_provider = build_ai_provider(
+                                    resolved_settings,
+                                    api_key_override=user_key,
                                 )
                             except Exception:
                                 logger.warning("Failed to decrypt BYOK key for user %s", user_id)

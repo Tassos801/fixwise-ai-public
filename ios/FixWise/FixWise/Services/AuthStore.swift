@@ -7,21 +7,54 @@ final class AuthStore: ObservableObject {
         let refreshToken: String
     }
 
-    struct UserProfile: Codable, Equatable {
+    struct UserProfile: Decodable, Equatable {
         let id: String
         let email: String
         let displayName: String?
         let tier: String
         let hasApiKey: Bool?
         let apiKeyMask: String?
+        let apiKeyProvider: String?
 
         private enum CodingKeys: String, CodingKey {
             case id
             case email
-            case displayName = "display_name"
+            case displayNameSnake = "display_name"
+            case displayNameCamel = "displayName"
             case tier
             case hasApiKey
             case apiKeyMask
+            case apiKeyProvider
+        }
+
+        init(
+            id: String,
+            email: String,
+            displayName: String?,
+            tier: String,
+            hasApiKey: Bool?,
+            apiKeyMask: String?,
+            apiKeyProvider: String?
+        ) {
+            self.id = id
+            self.email = email
+            self.displayName = displayName
+            self.tier = tier
+            self.hasApiKey = hasApiKey
+            self.apiKeyMask = apiKeyMask
+            self.apiKeyProvider = apiKeyProvider
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            email = try container.decode(String.self, forKey: .email)
+            displayName = try container.decodeIfPresent(String.self, forKey: .displayNameSnake)
+                ?? container.decodeIfPresent(String.self, forKey: .displayNameCamel)
+            tier = try container.decode(String.self, forKey: .tier)
+            hasApiKey = try container.decodeIfPresent(Bool.self, forKey: .hasApiKey)
+            apiKeyMask = try container.decodeIfPresent(String.self, forKey: .apiKeyMask)
+            apiKeyProvider = try container.decodeIfPresent(String.self, forKey: .apiKeyProvider)
         }
     }
 
@@ -86,17 +119,31 @@ final class AuthStore: ObservableObject {
     }
 
     func signIn(email: String, password: String, using backendConfiguration: BackendConfigurationStore) async -> Bool {
-        await authenticate(
+        let trimmedEmail = normalizedEmail(email)
+        guard validateSignIn(email: trimmedEmail, password: password) else {
+            return false
+        }
+
+        return await authenticate(
             path: "/api/auth/login",
-            payload: AuthCredentials(email: email, password: password),
+            payload: AuthCredentials(email: trimmedEmail, password: password),
             using: backendConfiguration
         )
     }
 
-    func register(email: String, password: String, displayName: String?, using backendConfiguration: BackendConfigurationStore) async -> Bool {
-        await authenticate(
+    func register(email: String, password: String, using backendConfiguration: BackendConfigurationStore) async -> Bool {
+        let trimmedEmail = normalizedEmail(email)
+        guard validateRegistration(email: trimmedEmail, password: password) else {
+            return false
+        }
+
+        return await authenticate(
             path: "/api/auth/register",
-            payload: RegistrationCredentials(email: email, password: password, displayName: displayName),
+            payload: RegistrationCredentials(
+                email: trimmedEmail,
+                password: password,
+                displayName: Self.displayNameSuggestion(for: trimmedEmail)
+            ),
             using: backendConfiguration
         )
     }
@@ -119,6 +166,13 @@ final class AuthStore: ObservableObject {
             // Clearing local session should still continue even if Keychain removal fails.
         }
         clearSession(message: nil)
+    }
+
+    func clearErrorMessage() {
+        if case .failed = status {
+            status = .signedOut
+        }
+        lastErrorMessage = nil
     }
 
     private func authenticate<Request: Encodable>(
@@ -239,6 +293,64 @@ final class AuthStore: ObservableObject {
         return NSError(domain: "FixWise.Auth", code: statusCode, userInfo: [
             NSLocalizedDescriptionKey: "Request failed with HTTP \(statusCode)."
         ])
+    }
+
+    private func validateSignIn(email: String, password: String) -> Bool {
+        guard !email.isEmpty else {
+            return failValidation("Enter your email address to sign in.")
+        }
+
+        guard !password.isEmpty else {
+            return failValidation("Enter your password to sign in.")
+        }
+
+        return true
+    }
+
+    private func validateRegistration(email: String, password: String) -> Bool {
+        guard !email.isEmpty else {
+            return failValidation("Enter your email address to create an account.")
+        }
+
+        guard password.count >= 8 else {
+            return failValidation("Create a password with at least 8 characters.")
+        }
+
+        return true
+    }
+
+    private func failValidation(_ message: String) -> Bool {
+        lastErrorMessage = message
+        status = .failed(message)
+        return false
+    }
+
+    private func normalizedEmail(_ email: String) -> String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func displayNameSuggestion(for email: String) -> String? {
+        guard let localPart = email.split(separator: "@").first else {
+            return nil
+        }
+
+        let cleaned = localPart
+            .replacingOccurrences(of: ".", with: " ")
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !cleaned.isEmpty else { return nil }
+
+        return cleaned
+            .split(separator: " ")
+            .map { word in
+                let lowercased = word.lowercased()
+                let first = String(lowercased.prefix(1)).uppercased()
+                let rest = String(lowercased.dropFirst())
+                return first + rest
+            }
+            .joined(separator: " ")
     }
 
     private struct AuthResponse: Decodable {

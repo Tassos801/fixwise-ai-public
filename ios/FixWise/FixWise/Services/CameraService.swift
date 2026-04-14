@@ -16,8 +16,8 @@ final class CameraService: NSObject, ObservableObject {
     // MARK: - Configuration
 
     struct Config {
-        var targetResolution: CGSize = CGSize(width: 512, height: 512)
-        var jpegQuality: CGFloat = 0.7
+        var targetResolution: CGSize = CGSize(width: 384, height: 384)
+        var jpegQuality: CGFloat = 0.5
         var idleFPS: Double = 1.0
         var activeFPS: Double = 2.0
         var highActivityFPS: Double = 3.0
@@ -62,17 +62,21 @@ final class CameraService: NSObject, ObservableObject {
 
     func startSession() {
         runtimeIssue = nil
+
+        guard ARWorldTrackingConfiguration.isSupported else {
+            runtimeIssue = "ARKit world tracking is not supported on this device."
+            return
+        }
+
         let configuration = ARWorldTrackingConfiguration()
         configuration.planeDetection = [.horizontal, .vertical]
-        configuration.frameSemantics = .smoothedSceneDepth // if LiDAR available
 
-        // Fallback for non-LiDAR devices
-        if !ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
-            configuration.frameSemantics = []
+        if ARWorldTrackingConfiguration.supportsFrameSemantics(.smoothedSceneDepth) {
+            configuration.frameSemantics = .smoothedSceneDepth
         }
 
         arSession.delegate = self
-        arSession.run(configuration)
+        arSession.run(configuration, options: [.resetTracking, .removeExistingAnchors])
         isSessionRunning = true
     }
 

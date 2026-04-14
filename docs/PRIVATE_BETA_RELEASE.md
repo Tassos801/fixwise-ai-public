@@ -25,8 +25,10 @@ The repository is not currently attached to a Git remote, so the included `rende
 - Required secrets:
   - `FIXWISE_JWT_SECRET`
   - `FIXWISE_MASTER_KEY`
-  - `OPENAI_API_KEY`
+  - `OPENAI_API_KEY` when `FIXWISE_AI_PROVIDER=openai`
+  - `GEMMA_API_KEY` when `FIXWISE_AI_PROVIDER=gemma`
 - Required config:
+  - `FIXWISE_AI_PROVIDER=openai|gemma`
   - `FIXWISE_ALLOWED_ORIGINS`
   - `FIXWISE_DATABASE_PATH=/data/fixwise.db`
   - `FIXWISE_ENVIRONMENT=production`
@@ -42,7 +44,7 @@ The repository is not currently attached to a Git remote, so the included `rende
 
 Run these after every staging or beta deploy:
 
-1. `GET /health` returns `200` and reports the expected environment and AI provider state.
+1. `GET /health` returns `200` and reports the expected environment, AI provider, and model state.
 2. Register a new user, log in, refresh the session, and confirm `/api/auth/me` works.
 3. Save and remove a BYOK key from the web portal.
 4. Launch the iOS app, confirm the backend configuration points to public `https://` and `wss://` URLs, then complete onboarding.

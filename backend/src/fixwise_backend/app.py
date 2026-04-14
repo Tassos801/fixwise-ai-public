@@ -64,6 +64,7 @@ def create_app(
 ) -> FastAPI:
     resolved_settings = settings or get_settings()
     resolved_settings.validate()
+    enforce_tier_limits = resolved_settings.environment == "production"
     resolved_session_manager = session_manager or SessionManager()
     ai_provider = provider or build_ai_provider(resolved_settings)
     db = database or Database(resolved_settings.database_path or ":memory:")
@@ -432,19 +433,20 @@ def create_app(
                     if session_id is None:
                         session_id = message.sessionId
                         # Enforce tier session quota
-                        user_row = await db.get_user_by_id(user_id)
-                        user_tier = user_row.tier if user_row else "free"
-                        try:
-                            await check_session_quota(db, user_id, user_tier)
-                        except HTTPException as exc:
-                            await websocket.send_json(
-                                ErrorMessage(
-                                    sessionId=message.sessionId,
-                                    message=exc.detail,
-                                ).model_dump(mode="json")
-                            )
-                            await websocket.close(code=1008)
-                            return
+                        if enforce_tier_limits:
+                            user_row = await db.get_user_by_id(user_id)
+                            user_tier = user_row.tier if user_row else "free"
+                            try:
+                                await check_session_quota(db, user_id, user_tier)
+                            except HTTPException as exc:
+                                await websocket.send_json(
+                                    ErrorMessage(
+                                        sessionId=message.sessionId,
+                                        message=exc.detail,
+                                    ).model_dump(mode="json")
+                                )
+                                await websocket.close(code=1008)
+                                return
                         await db.create_session(session_id=session_id, user_id=user_id)
 
                     resolved_session_manager.store_frame(
@@ -477,7 +479,7 @@ def create_app(
                         await db.create_session(session_id=session_id, user_id=user_id)
 
                     # Check session duration limit
-                    if session_id:
+                    if enforce_tier_limits and session_id:
                         db_session = await db.get_session(session_id)
                         if db_session and db_session.started_at:
                             user_row = await db.get_user_by_id(user_id)
@@ -545,10 +547,15 @@ def create_app(
                         )
                     except Exception as exc:
                         logger.exception("AI provider failed during prompt handling.")
+                        err_str = str(exc).lower()
+                        if "rate" in err_str or "quota" in err_str or "429" in err_str:
+                            user_message = "AI is busy right now. Please wait a moment and try again."
+                        else:
+                            user_message = f"Unable to analyze prompt right now: {exc}"
                         await websocket.send_json(
                             ErrorMessage(
                                 sessionId=message.sessionId,
-                                message=f"Unable to analyze prompt right now: {exc}",
+                                message=user_message,
                             ).model_dump(mode="json")
                         )
                         continue

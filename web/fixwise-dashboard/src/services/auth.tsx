@@ -9,6 +9,10 @@ interface User {
   tier: string;
   hasApiKey: boolean;
   apiKeyMask: string | null;
+  provider?: string | null;
+  apiProvider?: string | null;
+  aiProvider?: string | null;
+  apiKeyProvider?: string | null;
 }
 
 interface AuthContextType {

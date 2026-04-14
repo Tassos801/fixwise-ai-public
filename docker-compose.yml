@@ -11,15 +11,18 @@ services:
       - "8000:8000"
     volumes:
       - fixwise-backend-data:/data
+    restart: unless-stopped
 
   web:
     build:
       context: ./web/fixwise-dashboard
       dockerfile: Dockerfile
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "3000:80"
+    restart: unless-stopped
 
 volumes:
   fixwise-backend-data:

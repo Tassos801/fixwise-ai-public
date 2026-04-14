@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>FixWise connects to a local backend server for AI-powered guidance.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>FixWise uses the camera to see what you're working on and provide visual guidance.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>FixWise uses the microphone so you can ask questions by voice.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>FixWise uses speech recognition to understand your spoken questions.</string>
+</dict>
+</plist>

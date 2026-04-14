@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import time
 import unittest
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -144,6 +146,110 @@ class WebSocketFlowTests(unittest.TestCase):
 
             self.assertIsNone(session_manager.get_latest_frame("session-1"))
             self.assertNotIn("session-1", session_manager.sessions)
+
+    def test_development_ignores_free_tier_session_quota(self):
+        app = create_app(
+            Settings(
+                ai_mode="mock",
+                openai_api_key=None,
+                database_path=":memory:",
+                environment="development",
+            )
+        )
+
+        with TestClient(app) as client:
+            for index in range(4):
+                session_id = f"session-dev-{index}"
+                with client.websocket_connect("/ws/session") as websocket:
+                    websocket.send_json(
+                        {
+                            "type": "frame",
+                            "sessionId": session_id,
+                            "timestamp": 1.0 + index,
+                            "frame": "ZmFrZS1qcGVn",
+                            "frameMetadata": {
+                                "width": 512,
+                                "height": 512,
+                                "sceneDelta": 0.11,
+                            },
+                        }
+                    )
+                    websocket.send_json(
+                        {
+                            "type": "prompt",
+                            "sessionId": session_id,
+                            "timestamp": 2.0 + index,
+                            "text": "What should I do next?",
+                        }
+                    )
+                    response = websocket.receive_json()
+
+                self.assertEqual(response["type"], "response")
+
+    def test_production_enforces_free_tier_session_quota(self):
+        with patch.dict(
+            os.environ,
+            {
+                "FIXWISE_JWT_SECRET": "x" * 32,
+                "FIXWISE_MASTER_KEY": "ab" * 32,
+            },
+            clear=False,
+        ):
+            app = create_app(
+                Settings(
+                    ai_mode="mock",
+                    openai_api_key=None,
+                    database_path=":memory:",
+                    environment="production",
+                )
+            )
+
+        with TestClient(app) as client:
+            for index in range(3):
+                session_id = f"session-prod-{index}"
+                with client.websocket_connect("/ws/session") as websocket:
+                    websocket.send_json(
+                        {
+                            "type": "frame",
+                            "sessionId": session_id,
+                            "timestamp": 1.0 + index,
+                            "frame": "ZmFrZS1qcGVn",
+                            "frameMetadata": {
+                                "width": 512,
+                                "height": 512,
+                                "sceneDelta": 0.11,
+                            },
+                        }
+                    )
+                    websocket.send_json(
+                        {
+                            "type": "prompt",
+                            "sessionId": session_id,
+                            "timestamp": 2.0 + index,
+                            "text": "What should I do next?",
+                        }
+                    )
+                    response = websocket.receive_json()
+                    self.assertEqual(response["type"], "response")
+
+            with client.websocket_connect("/ws/session") as websocket:
+                websocket.send_json(
+                    {
+                        "type": "frame",
+                        "sessionId": "session-prod-limit",
+                        "timestamp": 10.0,
+                        "frame": "ZmFrZS1qcGVn",
+                        "frameMetadata": {
+                            "width": 512,
+                            "height": 512,
+                            "sceneDelta": 0.11,
+                        },
+                    }
+                )
+                response = websocket.receive_json()
+
+            self.assertEqual(response["type"], "error")
+            self.assertIn("Monthly session limit reached", response["message"])
 
 
 if __name__ == "__main__":

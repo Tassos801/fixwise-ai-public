@@ -2,6 +2,26 @@ import AVFoundation
 import Foundation
 import Speech
 
+enum SpeechRecognitionShutdownMode: Equatable {
+    case idle
+    case finishing
+    case canceling
+}
+
+enum SpeechRecognitionErrorPolicy {
+    static func shouldIgnore(_ error: NSError, shutdownMode: SpeechRecognitionShutdownMode) -> Bool {
+        if shutdownMode != .idle {
+            return true
+        }
+
+        if error.domain == "kLSRErrorDomain" && error.code == 301 {
+            return true
+        }
+
+        return false
+    }
+}
+
 @MainActor
 final class SpeechCaptureService: NSObject, ObservableObject {
     @Published private(set) var isRecording = false
@@ -9,7 +29,6 @@ final class SpeechCaptureService: NSObject, ObservableObject {
     @Published private(set) var lastErrorMessage: String?
 
     private let audioEngine = AVAudioEngine()
-    private let audioSession = AVAudioSession.sharedInstance()
     private let speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
 
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
@@ -17,6 +36,11 @@ final class SpeechCaptureService: NSObject, ObservableObject {
     private var transcriptReadyHandler: ((String) -> Void)?
     private var fallbackHandler: (() -> Void)?
     private var didCompleteCurrentCapture = false
+    private var shutdownMode: SpeechRecognitionShutdownMode = .idle
+
+    /// Auto-submit timer: fires after silence
+    private var silenceTimer: Timer?
+    private let silenceTimeout: TimeInterval = 2.0
 
     func toggleRecording(
         onTranscriptReady: @escaping (String) -> Void,
@@ -35,6 +59,19 @@ final class SpeechCaptureService: NSObject, ObservableObject {
         }
     }
 
+    func startListening(
+        onTranscriptReady: @escaping (String) -> Void,
+        onFallbackRequested: @escaping () -> Void
+    ) {
+        transcriptReadyHandler = onTranscriptReady
+        fallbackHandler = onFallbackRequested
+
+        guard !isRecording else { return }
+        Task {
+            await startRecordingIfPossible()
+        }
+    }
+
     func cancelRecording() {
         finishRecording(shouldSubmit: false)
     }
@@ -43,6 +80,7 @@ final class SpeechCaptureService: NSObject, ObservableObject {
         lastErrorMessage = nil
         transcript = ""
         didCompleteCurrentCapture = false
+        shutdownMode = .idle
 
         guard await ensurePermissions() else {
             fallbackHandler?()
@@ -92,12 +130,13 @@ final class SpeechCaptureService: NSObject, ObservableObject {
     }
 
     private func configureAudioSessionForRecording() throws {
-        try audioSession.setCategory(
+        let session = AVAudioSession.sharedInstance()
+        try session.setCategory(
             .playAndRecord,
             mode: .measurement,
             options: [.defaultToSpeaker, .allowBluetoothHFP, .duckOthers]
         )
-        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+        try session.setActive(true, options: .notifyOthersOnDeactivation)
     }
 
     private func beginRecognition(with speechRecognizer: SFSpeechRecognizer) throws {
@@ -122,6 +161,8 @@ final class SpeechCaptureService: NSObject, ObservableObject {
 
                 if let result {
                     self.transcript = result.bestTranscription.formattedString
+                    self.resetSilenceTimer()
+
                     if result.isFinal {
                         self.finishRecording(shouldSubmit: true)
                         return
@@ -129,27 +170,55 @@ final class SpeechCaptureService: NSObject, ObservableObject {
                 }
 
                 if let error {
-                    self.fail(with: error.localizedDescription)
-                    self.fallbackHandler?()
+                    let nsError = error as NSError
+                    if SpeechRecognitionErrorPolicy.shouldIgnore(nsError, shutdownMode: self.shutdownMode) {
+                        self.resetRecognitionState()
+                    } else if nsError.domain == "kAFAssistantErrorDomain" && nsError.code == 1101 {
+                        self.finishRecording(shouldSubmit: true)
+                    } else if nsError.domain == "kAFAssistantErrorDomain" && nsError.code == 1110 {
+                        self.finishRecording(shouldSubmit: true)
+                    } else {
+                        self.fail(with: error.localizedDescription)
+                        self.fallbackHandler?()
+                    }
                 }
             }
         }
 
         isRecording = true
+        resetSilenceTimer()
+    }
+
+    // MARK: - Silence Detection
+
+    private func resetSilenceTimer() {
+        silenceTimer?.invalidate()
+        silenceTimer = Timer.scheduledTimer(withTimeInterval: silenceTimeout, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.isRecording else { return }
+                let currentTranscript = self.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !currentTranscript.isEmpty {
+                    self.finishRecording(shouldSubmit: true)
+                }
+            }
+        }
     }
 
     private func finishRecording(shouldSubmit: Bool) {
         guard isRecording || recognitionTask != nil else { return }
 
+        silenceTimer?.invalidate()
+        silenceTimer = nil
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
         recognitionRequest?.endAudio()
         isRecording = false
+        shutdownMode = shouldSubmit ? .finishing : .canceling
 
         if shouldSubmit {
             submitTranscriptIfNeeded()
         } else {
-            cleanupRecognition()
+            cleanupRecognition(shouldCancel: true)
         }
     }
 
@@ -158,7 +227,7 @@ final class SpeechCaptureService: NSObject, ObservableObject {
         didCompleteCurrentCapture = true
 
         let finalTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        cleanupRecognition()
+        cleanupRecognition(shouldCancel: false)
 
         guard !finalTranscript.isEmpty else {
             fallbackHandler?()
@@ -168,16 +237,27 @@ final class SpeechCaptureService: NSObject, ObservableObject {
         transcriptReadyHandler?(finalTranscript)
     }
 
-    private func cleanupRecognition() {
-        recognitionTask?.cancel()
+    private func cleanupRecognition(shouldCancel: Bool) {
+        if shouldCancel {
+            recognitionTask?.cancel()
+        } else {
+            recognitionTask?.finish()
+        }
+        resetRecognitionState()
+        // Don't deactivate audio session — playback needs it
+    }
+
+    private func resetRecognitionState() {
         recognitionTask = nil
         recognitionRequest = nil
-        try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     private func fail(with message: String) {
         lastErrorMessage = message
-        cleanupRecognition()
+        shutdownMode = .canceling
+        cleanupRecognition(shouldCancel: true)
         isRecording = false
+        silenceTimer?.invalidate()
+        silenceTimer = nil
     }
 }

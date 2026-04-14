@@ -29,6 +29,8 @@ class AuthTests(unittest.TestCase):
         self.assertIn("access_token", data)
         self.assertIn("refresh_token", data)
         self.assertEqual(data["user"]["email"], "test@example.com")
+        self.assertEqual(data["user"]["display_name"], "Test User")
+        self.assertEqual(data["user"]["displayName"], "Test User")
         self.assertEqual(data["user"]["tier"], "free")
 
     def test_register_duplicate_email_returns_409(self):
@@ -85,6 +87,8 @@ class AuthTests(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["email"], "me@example.com")
+        self.assertEqual(resp.json()["display_name"], "Me User")
+        self.assertEqual(resp.json()["displayName"], "Me User")
 
     def test_me_endpoint_without_token_returns_401(self):
         with self.client:

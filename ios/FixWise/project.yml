@@ -17,7 +17,9 @@ targets:
       - path: FixWise
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.fixwise.ai
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: 3UY47WQ6MM
+        PRODUCT_BUNDLE_IDENTIFIER: com.tassosdimitriou.fixwisebeta
         PRODUCT_NAME: FixWise
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: FixWise

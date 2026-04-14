@@ -185,6 +185,21 @@ class ProviderSelectionTests(unittest.TestCase):
         self.assertIn("smallest reversible action", result.text)
         self.assertNotIn("then ask for the next step", result.text.lower())
 
+    def test_mock_provider_generic_frame_guidance_hides_internal_session_details(self):
+        provider = MockAIProvider()
+
+        result = asyncio.run(
+            provider.analyze(
+                frame_b64="ZmFrZS1qcGVn",
+                prompt="Can you help with this?",
+                session_id="session-12345678",
+            )
+        )
+
+        self.assertIn("I can see the area you mean", result.text)
+        self.assertNotIn("session", result.text.lower())
+        self.assertNotIn("latest frame", result.text.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

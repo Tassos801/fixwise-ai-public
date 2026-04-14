@@ -49,10 +49,13 @@ final class SessionState: ObservableObject {
 
     func didConnect() {
         guard sessionId != nil else { return }
+        lastGuidanceText = ""
         overlay = nil
         phase = .active(subState: .listening)
         if startTime == nil {
             startTime = Date()
+            startTimer()
+        } else if timer == nil {
             startTimer()
         }
     }
@@ -62,8 +65,7 @@ final class SessionState: ObservableObject {
         phase = .active(subState: .processing)
     }
 
-    func didReceiveResponse(step: Int, newAnnotations: [Annotation], text: String) {
-        currentStep = step
+    func didReceiveResponse(newAnnotations: [Annotation], text: String) {
         annotations = newAnnotations
         lastGuidanceText = text
         overlay = nil

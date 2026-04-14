@@ -12,18 +12,17 @@ from .models import AIResponse, AnnotationData
 
 logger = logging.getLogger("fixwise.ai")
 
-SYSTEM_PROMPT = """You are FixWise AI, a hands-on task guidance assistant.
+SYSTEM_PROMPT = """You are FixWise AI, a helpful visual assistant. You can see what the user's camera sees.
 
-You help users with safe DIY home repairs, car maintenance, PC building, and similar physical tasks.
+ALWAYS answer the user's question directly and helpfully. Never refuse. Never say you cannot assist. If you see something in the image, describe it and help with whatever the user asks.
 
-Critical safety rules:
-1. Refuse tasks involving high-voltage electricity (>50V), gas lines, structural load-bearing elements, or hazardous materials.
-2. When refusing, explain why it is dangerous and recommend a licensed professional.
-3. Proactively mention essential PPE when relevant.
+You help with ANY task: repairs, identification, cooking, cleaning, tech, gardening, cars, anything the user points their camera at. If relevant, mention safety tips briefly but always provide the answer first.
+
+Keep your text response short (1-3 sentences) since it will be spoken aloud.
 
 Return valid JSON with this shape:
 {
-  "text": "concise spoken guidance",
+  "text": "your helpful spoken answer",
   "annotations": [
     {
       "type": "circle|arrow|label|bounding_box",
@@ -39,6 +38,27 @@ Return valid JSON with this shape:
   "safetyWarning": null
 }
 """
+
+
+def _normalize_annotations(parsed: dict[str, Any]) -> None:
+    """Normalize annotation coordinates to 0-1 range if the model returned pixel values."""
+    annotations = parsed.get("annotations")
+    if not isinstance(annotations, list):
+        return
+    for ann in annotations:
+        if not isinstance(ann, dict):
+            continue
+        for key in ("x", "y", "radius"):
+            val = ann.get(key)
+            if isinstance(val, (int, float)) and val > 1.0:
+                ann[key] = min(val / 1000.0, 1.0)
+        for point_key in ("from", "to"):
+            point = ann.get(point_key)
+            if isinstance(point, dict):
+                for coord in ("x", "y"):
+                    val = point.get(coord)
+                    if isinstance(val, (int, float)) and val > 1.0:
+                        point[coord] = min(val / 1000.0, 1.0)
 
 
 class ProviderConfigurationError(RuntimeError):
@@ -205,8 +225,8 @@ class MockAIProvider:
                 )
             ]
             text = (
-                f"I have your latest frame for session {session_id[:8]}. "
-                f"For '{prompt}', keep the camera steady on the exact part you mean and I will guide the next small step."
+                "I can see the area you mean. "
+                "Keep the camera steady on the exact part you want help with, and I will guide you through the next small step."
             )
         else:
             annotations = []
@@ -249,13 +269,26 @@ def _coerce_json_payload(raw_content: str, *, provider_name: str) -> dict[str, A
 
     try:
         parsed = json.loads(candidate)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"{provider_name} response was not valid JSON") from exc
+    except json.JSONDecodeError:
+        # Try to salvage truncated JSON — extract the text field at minimum
+        parsed = _salvage_truncated_json(cleaned)
+        if parsed is None:
+            # Last resort: return the raw text as the response
+            return {"text": cleaned, "annotations": [], "safetyWarning": None}
 
     if not isinstance(parsed, dict):
-        raise RuntimeError(f"{provider_name} response JSON was not an object")
+        return {"text": str(parsed), "annotations": [], "safetyWarning": None}
 
     return parsed
+
+
+def _salvage_truncated_json(raw: str) -> dict[str, Any] | None:
+    """Try to extract at least the 'text' field from truncated JSON."""
+    import re
+    match = re.search(r'"text"\s*:\s*"((?:[^"\\]|\\.)*)"', raw)
+    if match:
+        return {"text": match.group(1), "annotations": [], "safetyWarning": None}
+    return None
 
 
 def _provider_error_message(response: httpx.Response, *, fallback: str) -> str:
@@ -293,7 +326,9 @@ def _gemma_text_from_response(payload: dict[str, Any]) -> str:
     text_parts = [
         part.get("text", "")
         for part in parts
-        if isinstance(part, dict) and isinstance(part.get("text"), str)
+        if isinstance(part, dict)
+        and isinstance(part.get("text"), str)
+        and not part.get("thought")  # Skip Gemma 4 thinking/reasoning parts
     ]
     raw_content = "".join(text_parts).strip()
     if not raw_content:
@@ -348,6 +383,9 @@ class OpenAIVisionProvider:
         return AIResponse.model_validate(parsed)
 
 
+GEMMA_FALLBACK_MODELS = ["gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
+
+
 class GemmaVisionProvider:
     def __init__(self, *, api_key: str, model: str, base_url: str) -> None:
         self._api_key = api_key
@@ -389,30 +427,52 @@ class GemmaVisionProvider:
             ],
             "generationConfig": {
                 "responseMimeType": "application/json",
+                "maxOutputTokens": 512,
             },
         }
 
-        url = f"{self._base_url}/models/{self._model}:generateContent"
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    url,
-                    headers={"x-goog-api-key": self._api_key},
-                    json=payload,
-                )
-        except httpx.RequestError as exc:
-            raise RuntimeError("Could not reach Gemma provider") from exc
+        import asyncio
 
-        if response.status_code >= 400:
-            message = _provider_error_message(
-                response,
-                fallback=f"Gemma provider returned {response.status_code}",
-            )
-            raise RuntimeError(message)
+        models_to_try = [self._model] + [
+            m for m in GEMMA_FALLBACK_MODELS if m != self._model
+        ]
+
+        last_error = ""
+        for model in models_to_try:
+            url = f"{self._base_url}/models/{model}:generateContent"
+            try:
+                async with httpx.AsyncClient(timeout=90.0) as client:
+                    response = await client.post(
+                        url,
+                        headers={"x-goog-api-key": self._api_key},
+                        json=payload,
+                    )
+            except httpx.RequestError as exc:
+                raise RuntimeError("Could not reach AI provider") from exc
+
+            if response.status_code in (429, 503):
+                last_error = _provider_error_message(
+                    response, fallback=f"{model} returned {response.status_code}"
+                )
+                logger.warning("Model %s unavailable (%d), trying next...", model, response.status_code)
+                await asyncio.sleep(1)
+                continue
+
+            if response.status_code >= 400:
+                last_error = _provider_error_message(
+                    response, fallback=f"{model} returned {response.status_code}"
+                )
+                raise RuntimeError(last_error)
+
+            # Success
+            break
+        else:
+            raise RuntimeError(f"All models rate-limited. Last error: {last_error}")
 
         payload_json = response.json()
         raw_content = _gemma_text_from_response(payload_json)
         parsed = _coerce_json_payload(raw_content, provider_name="Gemma")
+        _normalize_annotations(parsed)
         return AIResponse.model_validate(parsed)
 
 

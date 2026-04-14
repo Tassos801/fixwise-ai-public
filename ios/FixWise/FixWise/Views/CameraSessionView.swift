@@ -1,5 +1,77 @@
 import ARKit
+import AVFoundation
 import SwiftUI
+
+enum GuidanceInputReadiness: Equatable {
+    case sessionUnavailable
+    case waitingForConnection
+    case waitingForSceneFrame
+    case ready
+
+    static func resolve(
+        hasStartedSession: Bool,
+        canSendInteractiveMessages: Bool,
+        hasSessionId: Bool,
+        hasVisualContext: Bool,
+        isTerminal: Bool
+    ) -> GuidanceInputReadiness {
+        guard hasStartedSession, hasSessionId, !isTerminal else {
+            return .sessionUnavailable
+        }
+        guard canSendInteractiveMessages else {
+            return .waitingForConnection
+        }
+        guard hasVisualContext else {
+            return .waitingForSceneFrame
+        }
+        return .ready
+    }
+
+    var canInteract: Bool {
+        self == .ready
+    }
+
+    var bannerText: String {
+        switch self {
+        case .sessionUnavailable:
+            return "Start a live session to ask a question."
+        case .waitingForConnection:
+            return "Connecting to FixWise before prompt controls are enabled."
+        case .waitingForSceneFrame:
+            return "Hold the phone on the task for a moment so FixWise can see it before you ask."
+        case .ready:
+            return "Ask naturally about what you see, what to do next, or what looks unsafe."
+        }
+    }
+
+    func blockedMessage(for inputMethod: String) -> String {
+        switch self {
+        case .sessionUnavailable:
+            return "Start a live session before \(inputMethod)."
+        case .waitingForConnection:
+            return "FixWise is still connecting. Give it a moment before \(inputMethod)."
+        case .waitingForSceneFrame:
+            return "Hold the phone on the task for a moment so FixWise can see it before \(inputMethod)."
+        case .ready:
+            return ""
+        }
+    }
+}
+
+enum GuidanceTextSanitizer {
+    static func userFacing(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        let lower = trimmed.lowercased()
+        // Filter out internal frame-acknowledgement messages — not useful to the user
+        if lower.contains("latest frame for session") || lower.contains("i have your latest frame") {
+            return ""
+        }
+
+        return trimmed
+    }
+}
 
 struct CameraSessionView: View {
     @StateObject private var cameraService = CameraService()
@@ -10,18 +82,24 @@ struct CameraSessionView: View {
     @EnvironmentObject private var backendConfiguration: BackendConfigurationStore
     @EnvironmentObject private var webSocketService: WebSocketService
 
+    @StateObject private var speechPlaybackService = SpeechPlaybackService()
+
     @State private var hasStartedSession = false
     @State private var hasConnectedOnce = false
+    @State private var hasSentSceneFrame = false
     @State private var isTypedPromptPresented = false
     @State private var isSettingsPresented = false
     @State private var typedPrompt = ""
-
-    private let speechPlaybackService = SpeechPlaybackService()
+    @AppStorage("conversationModeEnabled") private var conversationMode = true
 
     var body: some View {
         ZStack {
-            ARViewContainer(session: cameraService.arSession)
+            ARViewContainer(session: cameraService.arSession, showPlanes: hasStartedSession)
                 .ignoresSafeArea()
+
+            // AR analysis effects
+            ScanLineView(isActive: isAnalyzing)
+            CornerBracketsView(isActive: hasStartedSession && hasSentSceneFrame)
 
             AnnotationOverlayView(annotations: sessionState.annotations)
 
@@ -35,7 +113,6 @@ struct CameraSessionView: View {
                     }
                     Spacer()
                     settingsButton
-                    stepCounter
                 }
 
                 if !statusBannerText.isEmpty {
@@ -73,13 +150,19 @@ struct CameraSessionView: View {
         .onReceive(cameraService.framePublisher) { encodedFrame in
             guard webSocketService.connectionState.isConnected,
                   let sessionId = sessionState.sessionId else { return }
-            webSocketService.sendFrame(encodedFrame, sessionId: sessionId)
+            if webSocketService.sendFrame(encodedFrame, sessionId: sessionId) {
+                hasSentSceneFrame = true
+            }
         }
         .onReceive(webSocketService.responsePublisher) { response in
             handleResponse(response)
         }
         .onChange(of: webSocketService.connectionState) { _, newState in
             handleConnectionState(newState)
+        }
+        .onChange(of: hasSentSceneFrame) { _, isReady in
+            guard isReady else { return }
+            maybeStartHandsFreeListening()
         }
     }
 
@@ -97,16 +180,7 @@ struct CameraSessionView: View {
         .background(.ultraThinMaterial, in: Capsule())
     }
 
-    private var stepCounter: some View {
-        Text("Step \(sessionState.currentStep)")
-            .font(.system(.caption, design: .monospaced))
-            .foregroundColor(.white)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.ultraThinMaterial, in: Capsule())
-    }
-
-    private func deploymentBadge(text: String) -> some View {
+private func deploymentBadge(text: String) -> some View {
         Text(text)
             .font(.caption2.weight(.semibold))
             .foregroundColor(.white)
@@ -143,15 +217,21 @@ struct CameraSessionView: View {
     }
 
     private var controlBar: some View {
-        HStack(spacing: 12) {
+        VStack(spacing: 12) {
             if hasStartedSession {
-                talkButton
-                typeButton
-                Spacer()
-                endSessionButton
+                conversationModeToggle
+
+                HStack(spacing: 12) {
+                    talkButton
+                    typeButton
+                    Spacer()
+                    endSessionButton
+                }
             } else {
-                restartSessionButton
-                Spacer()
+                HStack {
+                    restartSessionButton
+                    Spacer()
+                }
             }
         }
     }
@@ -180,6 +260,34 @@ struct CameraSessionView: View {
         }
     }
 
+    private var conversationModeToggle: some View {
+        Toggle(
+            isOn: Binding(
+                get: { conversationMode },
+                set: updateConversationMode
+            )
+        ) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Hands-Free Conversation")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.white)
+                Text(
+                    conversationMode
+                    ? "FixWise will answer and then listen again automatically."
+                    : "FixWise will wait until you tap Talk or Type."
+                )
+                .font(.caption)
+                .foregroundColor(.white.opacity(0.82))
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .toggleStyle(.switch)
+        .tint(.green)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+    }
+
     private var talkButton: some View {
         Button(action: toggleTapToTalk) {
             Label(
@@ -195,8 +303,8 @@ struct CameraSessionView: View {
                 in: Capsule()
             )
         }
-        .disabled(!speechCaptureService.isRecording && !canInteractWithGuidance)
-        .opacity((speechCaptureService.isRecording || canInteractWithGuidance) ? 1 : 0.55)
+        .disabled(!speechCaptureService.isRecording && !guidanceReadiness.canInteract)
+        .opacity((speechCaptureService.isRecording || guidanceReadiness.canInteract) ? 1 : 0.55)
     }
 
     private var typeButton: some View {
@@ -208,8 +316,8 @@ struct CameraSessionView: View {
                 .padding(.vertical, 12)
                 .background(Color.black.opacity(0.45), in: Capsule())
         }
-        .disabled(!canInteractWithGuidance)
-        .opacity(canInteractWithGuidance ? 1 : 0.55)
+        .disabled(!guidanceReadiness.canInteract)
+        .opacity(guidanceReadiness.canInteract ? 1 : 0.55)
     }
 
     private var endSessionButton: some View {
@@ -270,12 +378,13 @@ struct CameraSessionView: View {
     }
 
     private func errorOverlay(message: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "wifi.exclamationmark")
+        let isBusy = message.localizedCaseInsensitiveContains("busy") || message.localizedCaseInsensitiveContains("wait")
+        return VStack(spacing: 16) {
+            Image(systemName: isBusy ? "hourglass.circle.fill" : "wifi.exclamationmark")
                 .font(.system(size: 46))
-                .foregroundColor(.red)
+                .foregroundColor(isBusy ? .yellow : .red)
 
-            Text("Connection Problem")
+            Text(isBusy ? "One Moment" : "Connection Problem")
                 .font(.title3.bold())
                 .foregroundColor(.white)
 
@@ -284,7 +393,7 @@ struct CameraSessionView: View {
                 .foregroundColor(.white.opacity(0.9))
                 .multilineTextAlignment(.center)
 
-            Button(errorOverlayButtonTitle) {
+            Button(isBusy ? "Try Again" : errorOverlayButtonTitle) {
                 handleErrorOverlayAction()
             }
             .buttonStyle(.borderedProminent)
@@ -331,7 +440,7 @@ struct CameraSessionView: View {
     private var statusBannerText: String {
         if speechCaptureService.isRecording {
             let transcript = speechCaptureService.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-            return transcript.isEmpty ? "Speak your question, then tap Stop to submit it." : transcript
+            return transcript.isEmpty ? "Listening..." : transcript
         }
 
         if let runtimeIssue = cameraService.runtimeIssue {
@@ -364,10 +473,11 @@ struct CameraSessionView: View {
             switch webSocketService.connectionState {
             case .reconnecting(let attempt):
                 return "Backend connection lost. Reconnecting now (attempt \(attempt))."
-            case .connecting:
-                return "Connecting to FixWise before prompt controls are enabled."
             default:
-                return "Point the camera at the task area, then tap Talk or Type to ask for guidance."
+                if guidanceReadiness == .ready && conversationMode {
+                    return "Ask naturally. FixWise will keep listening after each answer."
+                }
+                return guidanceReadiness.bannerText
             }
         }
     }
@@ -382,9 +492,16 @@ struct CameraSessionView: View {
         guard !hasStartedSession else { return }
         hasStartedSession = true
         hasConnectedOnce = false
+        hasSentSceneFrame = false
 
         _ = sessionState.startSession()
-        cameraService.startSession()
+
+        // Only start AR if camera permission is granted
+        let cameraStatus = AVCaptureDevice.authorizationStatus(for: .video)
+        if cameraStatus == .authorized {
+            cameraService.startSession()
+        }
+
         webSocketService.updateServerURL(backendConfiguration.backendWebSocketURL)
         webSocketService.connect(authToken: authStore.sessionToken)
     }
@@ -392,8 +509,10 @@ struct CameraSessionView: View {
     private func stopSession(markCompleted: Bool) {
         guard hasStartedSession else { return }
         hasStartedSession = false
+        hasSentSceneFrame = false
 
         speechCaptureService.cancelRecording()
+        speechPlaybackService.stop()
         cameraService.stopSession()
 
         if let sessionId = sessionState.sessionId {
@@ -413,18 +532,20 @@ struct CameraSessionView: View {
             _ = webSocketService.sendEndSession(sessionId: sessionId)
         }
         speechCaptureService.cancelRecording()
+        speechPlaybackService.stop()
         cameraService.stopSession()
         webSocketService.disconnect()
         typedPrompt = ""
         isTypedPromptPresented = false
+        hasSentSceneFrame = false
         sessionState.reset()
         hasStartedSession = false
         startSessionIfNeeded()
     }
 
     private func toggleTapToTalk() {
-        if !speechCaptureService.isRecording && !canInteractWithGuidance {
-            presentOperationalError("Wait for the backend connection before asking for guidance.")
+        if !speechCaptureService.isRecording && !guidanceReadiness.canInteract {
+            presentOperationalError(guidanceReadiness.blockedMessage(for: "asking a question"))
             return
         }
 
@@ -439,8 +560,8 @@ struct CameraSessionView: View {
     }
 
     private func presentTypedPrompt() {
-        guard canInteractWithGuidance else {
-            presentOperationalError("Wait for the backend connection before sending a typed question.")
+        guard guidanceReadiness.canInteract else {
+            presentOperationalError(guidanceReadiness.blockedMessage(for: "sending a typed question"))
             return
         }
         isTypedPromptPresented = true
@@ -451,8 +572,8 @@ struct CameraSessionView: View {
         guard !trimmedPrompt.isEmpty,
               let sessionId = sessionState.sessionId else { return }
 
-        guard webSocketService.canSendInteractiveMessages else {
-            presentOperationalError("FixWise is still connecting. Try again in a moment.")
+        guard guidanceReadiness.canInteract else {
+            presentOperationalError(guidanceReadiness.blockedMessage(for: "sending that question"))
             return
         }
 
@@ -472,12 +593,14 @@ struct CameraSessionView: View {
             hasConnectedOnce = true
             sessionState.didConnect()
         case .connecting, .reconnecting:
+            hasSentSceneFrame = false
             if !sessionState.isTerminal {
                 sessionState.phase = .connecting
             }
         case .disconnected where hasStartedSession && hasConnectedOnce:
-            sessionState.handleError("The backend connection was lost. Start a new session to reconnect.")
+            hasSentSceneFrame = false
         case .disconnected:
+            hasSentSceneFrame = false
             break
         }
     }
@@ -495,27 +618,94 @@ struct CameraSessionView: View {
             }
             sessionState.handleSafetyNotice(message)
         case "error":
-            sessionState.handleError(
-                response.message ?? "The backend could not process that request.",
-                shouldStopTimer: false
+            let rawError = GuidanceTextSanitizer.userFacing(
+                response.message ?? "The backend could not process that request."
             )
+            // Duration warnings aren't fatal — just speak them
+            if rawError.contains("Warning:") && rawError.contains("seconds remaining") {
+                speechPlaybackService.speak(rawError)
+                return
+            }
+            if rawError.localizedCaseInsensitiveContains("frame must be sent") {
+                hasSentSceneFrame = false
+                sessionState.handleError(
+                    "Hold the phone on the task for a moment so FixWise can see it, then ask again.",
+                    shouldStopTimer: false
+                )
+                return
+            }
+            sessionState.handleError(rawError, shouldStopTimer: false)
         default:
             let annotations = response.annotations?.map { Annotation(from: $0) } ?? []
-            let text = response.text ?? "Guidance received."
+            let text = GuidanceTextSanitizer.userFacing(response.text ?? "")
+            // Skip empty/internal messages — nothing to show or speak
+            guard !text.isEmpty else { return }
             sessionState.didReceiveResponse(
-                step: response.stepNumber ?? (sessionState.currentStep + 1),
                 newAnnotations: annotations,
                 text: text
             )
-            speechPlaybackService.speak(text)
+            speechPlaybackService.speak(text) {
+                maybeStartHandsFreeListening()
+            }
         }
     }
 
+    private func autoListen() {
+        guard canAutomaticallyListen else { return }
+        speechCaptureService.startListening(
+            onTranscriptReady: { prompt in
+                submitPrompt(prompt)
+            },
+            onFallbackRequested: {
+                // Silence — stay in conversation mode, don't pop keyboard
+            }
+        )
+    }
+
+    private func updateConversationMode(_ isEnabled: Bool) {
+        conversationMode = isEnabled
+        if isEnabled {
+            maybeStartHandsFreeListening()
+        }
+    }
+
+    private func maybeStartHandsFreeListening() {
+        guard conversationMode else { return }
+        autoListen()
+    }
+
+    private var canAutomaticallyListen: Bool {
+        guard guidanceReadiness.canInteract,
+              !speechCaptureService.isRecording,
+              !speechPlaybackService.isSpeaking,
+              sessionState.overlay == nil else {
+            return false
+        }
+
+        if case .active(.processing) = sessionState.phase {
+            return false
+        }
+
+        return true
+    }
+
+    private var isAnalyzing: Bool {
+        if case .active(.processing) = sessionState.phase { return true }
+        return false
+    }
+
+    private var guidanceReadiness: GuidanceInputReadiness {
+        GuidanceInputReadiness.resolve(
+            hasStartedSession: hasStartedSession,
+            canSendInteractiveMessages: webSocketService.canSendInteractiveMessages,
+            hasSessionId: sessionState.sessionId != nil,
+            hasVisualContext: hasSentSceneFrame,
+            isTerminal: sessionState.isTerminal
+        )
+    }
+
     private var canInteractWithGuidance: Bool {
-        hasStartedSession
-            && webSocketService.canSendInteractiveMessages
-            && sessionState.sessionId != nil
-            && !sessionState.isTerminal
+        guidanceReadiness.canInteract
     }
 
     private var errorOverlayButtonTitle: String {
@@ -540,151 +730,11 @@ struct CameraSessionView: View {
     private var starterPrompts: [String] {
         [
             "What am I looking at?",
-            "Show me the next safe step.",
-            "What tools do I need?",
+            "What should I do next?",
+            "Is anything here unsafe?",
         ]
     }
 }
 
-struct ARViewContainer: UIViewRepresentable {
-    let session: ARSession
-
-    func makeUIView(context: Context) -> ARSCNView {
-        let view = ARSCNView()
-        view.session = session
-        view.automaticallyUpdatesLighting = true
-        view.rendersContinuously = true
-        return view
-    }
-
-    func updateUIView(_ uiView: ARSCNView, context: Context) {}
-}
-
-struct AnnotationOverlayView: View {
-    let annotations: [Annotation]
-
-    var body: some View {
-        GeometryReader { geometry in
-            ForEach(annotations) { annotation in
-                annotationView(for: annotation, in: geometry.size)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func annotationView(for annotation: Annotation, in size: CGSize) -> some View {
-        switch annotation.type {
-        case .circle:
-            if let x = annotation.x, let y = annotation.y {
-                let radius = CGFloat(annotation.radius ?? 0.05) * min(size.width, size.height)
-                Circle()
-                    .stroke(Color(hex: annotation.color) ?? .orange, lineWidth: 3)
-                    .frame(width: radius * 2, height: radius * 2)
-                    .position(x: CGFloat(x) * size.width, y: CGFloat(y) * size.height)
-                    .overlay {
-                        annotationLabel(annotation.label)
-                            .position(
-                                x: CGFloat(x) * size.width,
-                                y: CGFloat(y) * size.height - radius - 16
-                            )
-                    }
-            }
-
-        case .label:
-            if let x = annotation.x, let y = annotation.y {
-                annotationLabel(annotation.label)
-                    .background(
-                        (Color(hex: annotation.color) ?? .orange).opacity(0.9),
-                        in: Capsule()
-                    )
-                    .position(x: CGFloat(x) * size.width, y: CGFloat(y) * size.height)
-            }
-
-        case .arrow:
-            if let from = annotation.from, let to = annotation.to {
-                let color = Color(hex: annotation.color) ?? .green
-                let fromPoint = CGPoint(x: CGFloat(from.x) * size.width, y: CGFloat(from.y) * size.height)
-                let toPoint = CGPoint(x: CGFloat(to.x) * size.width, y: CGFloat(to.y) * size.height)
-
-                Path { path in
-                    path.move(to: fromPoint)
-                    path.addLine(to: toPoint)
-
-                    let angle = atan2(toPoint.y - fromPoint.y, toPoint.x - fromPoint.x)
-                    let arrowLength: CGFloat = 14
-                    let arrowAngle: CGFloat = .pi / 7
-
-                    let leftPoint = CGPoint(
-                        x: toPoint.x - arrowLength * cos(angle - arrowAngle),
-                        y: toPoint.y - arrowLength * sin(angle - arrowAngle)
-                    )
-                    let rightPoint = CGPoint(
-                        x: toPoint.x - arrowLength * cos(angle + arrowAngle),
-                        y: toPoint.y - arrowLength * sin(angle + arrowAngle)
-                    )
-
-                    path.move(to: toPoint)
-                    path.addLine(to: leftPoint)
-                    path.move(to: toPoint)
-                    path.addLine(to: rightPoint)
-                }
-                .stroke(color, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
-
-                annotationLabel(annotation.label)
-                    .background(color.opacity(0.9), in: Capsule())
-                    .position(
-                        x: (fromPoint.x + toPoint.x) / 2,
-                        y: (fromPoint.y + toPoint.y) / 2 - 18
-                    )
-            }
-
-        case .boundingBox:
-            if let from = annotation.from, let to = annotation.to {
-                let color = Color(hex: annotation.color) ?? .yellow
-                let rect = CGRect(
-                    x: min(CGFloat(from.x), CGFloat(to.x)) * size.width,
-                    y: min(CGFloat(from.y), CGFloat(to.y)) * size.height,
-                    width: abs(CGFloat(to.x - from.x)) * size.width,
-                    height: abs(CGFloat(to.y - from.y)) * size.height
-                )
-
-                Rectangle()
-                    .stroke(color, lineWidth: 3)
-                    .frame(width: rect.width, height: rect.height)
-                    .position(x: rect.midX, y: rect.midY)
-                    .overlay {
-                        annotationLabel(annotation.label)
-                            .background(color.opacity(0.9), in: Capsule())
-                            .position(x: rect.midX, y: rect.minY - 16)
-                    }
-            }
-        }
-    }
-
-    private func annotationLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.caption.bold())
-            .foregroundColor(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.black.opacity(0.72), in: Capsule())
-    }
-}
-
-extension Color {
-    init?(hex: String) {
-        var sanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
-        sanitized = sanitized.replacingOccurrences(of: "#", with: "")
-
-        guard sanitized.count == 6,
-              let rgb = UInt64(sanitized, radix: 16) else {
-            return nil
-        }
-
-        self.init(
-            red: Double((rgb >> 16) & 0xFF) / 255.0,
-            green: Double((rgb >> 8) & 0xFF) / 255.0,
-            blue: Double(rgb & 0xFF) / 255.0
-        )
-    }
-}
+// ARViewContainer, AnnotationOverlayView, ScanLineView, CornerBracketsView
+// and Color(hex:) are defined in AROverlayViews.swift

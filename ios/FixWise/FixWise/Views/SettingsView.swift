@@ -12,7 +12,6 @@ struct SettingsView: View {
     @State private var authMode: AuthMode = .signIn
     @State private var email = ""
     @State private var password = ""
-    @State private var displayName = ""
     @State private var apiKeyInput = ""
     @State private var isTestingConnection = false
     @State private var isSavingKey = false
@@ -22,6 +21,7 @@ struct SettingsView: View {
 
     init(allowsDismissal: Bool = true) {
         self.allowsDismissal = allowsDismissal
+        _authMode = State(initialValue: .register)
     }
 
     var body: some View {
@@ -37,6 +37,7 @@ struct SettingsView: View {
 
                 accountSection
                 backendSection
+                aiProviderNoticeSection
 
                 if authStore.isAuthenticated {
                     apiKeySection
@@ -86,24 +87,22 @@ struct SettingsView: View {
                     authStore.signOut()
                 }
             } else {
-                Picker("Mode", selection: $authMode) {
-                    ForEach(AuthMode.allCases, id: \.self) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
+                Text(accountIntroCopy)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
 
-                TextField("Email", text: $email)
+                TextField("Email address", text: $email)
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
 
-                SecureField("Password", text: $password)
+                SecureField(passwordFieldTitle, text: $password)
                     .textContentType(.password)
 
-                if authMode == .register {
-                    TextField("Display name (optional)", text: $displayName)
-                        .textInputAutocapitalization(.words)
+                if let hint = authFormHint {
+                    Text(hint)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
 
                 if let message = authStore.lastErrorMessage, !message.isEmpty {
@@ -126,7 +125,6 @@ struct SettingsView: View {
                             success = await authStore.register(
                                 email: email.trimmingCharacters(in: .whitespacesAndNewlines),
                                 password: password,
-                                displayName: displayName.nilIfEmpty,
                                 using: backendConfiguration
                             )
                         }
@@ -148,11 +146,36 @@ struct SettingsView: View {
                     }
                 }
                 .disabled(!canSubmitAuthForm)
+
+                Button(authMode.togglePrompt) {
+                    authMode = authMode.toggled
+                    authStore.clearErrorMessage()
+                }
+                .font(.footnote.weight(.semibold))
+
+                if allowsDismissal {
+                    Button("Use Without Account") {
+                        dismiss()
+                    }
+                    .font(.footnote.weight(.semibold))
+                }
             }
         } header: {
-            Text("Account")
+            Text(allowsDismissal ? "FixWise Account (Optional)" : "FixWise Account")
         } footer: {
-            Text("Sign in before starting a live session so BYOK, history, and reports stay attached to your account.")
+            Text("You can use FixWise without an account. Create one only if you want saved history, reports, and an encrypted provider key.")
+        }
+    }
+
+    private var aiProviderNoticeSection: some View {
+        Section("AI Providers") {
+            Text("Third-party model-provider account sign-in is not available in FixWise. Sign in with your FixWise account first, then add a provider API key if you want live hosted AI.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            Text("This backend can be configured for providers like OpenAI or Gemma. The key field below will use whichever provider the backend expects.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -251,7 +274,7 @@ struct SettingsView: View {
                 }
                 .disabled(isRemovingKey)
             } else {
-                SecureField("sk-...", text: $apiKeyInput)
+                SecureField(apiKeyPlaceholder, text: $apiKeyInput)
                     .textContentType(.password)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -271,9 +294,31 @@ struct SettingsView: View {
                 .disabled(apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSavingKey)
             }
         } header: {
-            Text("OpenAI API Key (BYOK)")
+            Text(apiKeySectionTitle)
         } footer: {
-            Text("Your API key is encrypted by the backend and is never stored on-device.")
+            Text("This is for provider API access only. Your key is encrypted by the backend and is never stored on-device.")
+        }
+    }
+
+    private var apiKeySectionTitle: String {
+        switch backendHealth?.configuredProvider {
+        case "gemma":
+            return "Gemma API Key (Google AI Studio)"
+        case "openai":
+            return "OpenAI API Key"
+        default:
+            return "AI Provider API Key (Optional BYOK)"
+        }
+    }
+
+    private var apiKeyPlaceholder: String {
+        switch backendHealth?.configuredProvider {
+        case "gemma":
+            return "AIza..."
+        case "openai":
+            return "sk-..."
+        default:
+            return "Paste provider key"
         }
     }
 
@@ -299,6 +344,43 @@ struct SettingsView: View {
             return !trimmedEmail.isEmpty && password.count >= 8
         }
         return !trimmedEmail.isEmpty && !password.isEmpty
+    }
+
+    private var passwordFieldTitle: String {
+        authMode == .register ? "Password (8+ characters)" : "Password"
+    }
+
+    private var authFormHint: String? {
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if trimmedEmail.isEmpty {
+            return authMode == .register
+                ? "Enter your email and choose a password to create a FixWise account."
+                : "Enter your email and password to sign in."
+        }
+
+        if authMode == .register {
+            if password.count < 8 {
+                return "New accounts need at least 8 characters for the password."
+            }
+
+            return "No display name is required. We will infer a friendly name from your email if needed."
+        }
+
+        if password.isEmpty {
+            return "Use the password for your existing FixWise account."
+        }
+
+        return nil
+    }
+
+    private var accountIntroCopy: String {
+        switch authMode {
+        case .register:
+            return "Create a FixWise account with just your email and password. We’ll infer a friendly name automatically."
+        case .signIn:
+            return "Sign in with the email and password from your existing FixWise account."
+        }
     }
 
     private var appVersion: String {
@@ -464,6 +546,24 @@ private enum AuthMode: CaseIterable {
             return "Create Account"
         }
     }
+
+    var togglePrompt: String {
+        switch self {
+        case .signIn:
+            return "Need a new account? Create one"
+        case .register:
+            return "Already have an account? Sign in"
+        }
+    }
+
+    var toggled: AuthMode {
+        switch self {
+        case .signIn:
+            return .register
+        case .register:
+            return .signIn
+        }
+    }
 }
 
 private struct AlertItem: Identifiable {
@@ -476,17 +576,23 @@ private struct BackendHealth: Decodable {
     let status: String
     let environment: String?
     let provider: String?
+    let desiredProvider: String?
     let liveReady: Bool?
     let ai: AIStatus?
 
     struct AIStatus: Decodable {
         let provider: String?
+        let configuredProvider: String?
         let liveReady: Bool?
         let model: String?
     }
 
     var effectiveProvider: String {
         (ai?.provider ?? provider ?? "unknown").lowercased()
+    }
+
+    var configuredProvider: String {
+        (ai?.configuredProvider ?? desiredProvider ?? effectiveProvider).lowercased()
     }
 
     var isLiveReady: Bool {
@@ -499,6 +605,8 @@ private struct BackendHealth: Decodable {
             return "Mock Guidance"
         case "openai":
             return isLiveReady ? "OpenAI Live" : "OpenAI"
+        case "gemma":
+            return isLiveReady ? "Gemma Live" : "Gemma"
         case "unavailable":
             return "Unavailable"
         default:
@@ -511,7 +619,7 @@ private struct BackendHealth: Decodable {
             if hasSavedAPIKey {
                 return "A BYOK key is saved on your account, but this backend is still serving mock guidance right now."
             }
-            return "This backend is healthy but still using mock guidance. Sign in and save a BYOK OpenAI key to enable live AI."
+            return "This backend is healthy but still using mock guidance. Sign in and save a BYOK provider key to enable live AI."
         }
 
         if !isLiveReady {
@@ -519,13 +627,6 @@ private struct BackendHealth: Decodable {
         }
 
         return nil
-    }
-}
-
-private extension String {
-    var nilIfEmpty: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }
 

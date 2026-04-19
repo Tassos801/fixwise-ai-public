@@ -89,6 +89,7 @@ final class WebSocketService: ObservableObject {
         let mode: String?
         let suggestedMode: String?
         let summary: String?
+        let taskState: GuidanceTaskState?
 
         private enum CodingKeys: String, CodingKey {
             case type
@@ -113,6 +114,7 @@ final class WebSocketService: ObservableObject {
             case suggestedModeSnake = "suggested_mode"
             case summary
             case summarySnake = "session_summary"
+            case taskState
         }
 
         init(from decoder: Decoder) throws {
@@ -139,6 +141,7 @@ final class WebSocketService: ObservableObject {
                 ?? container.decodeIfPresent(String.self, forKey: .suggestedModeSnake)
             summary = try container.decodeIfPresent(String.self, forKey: .summary)
                 ?? container.decodeIfPresent(String.self, forKey: .summarySnake)
+            taskState = try container.decodeIfPresent(GuidanceTaskState.self, forKey: .taskState)
         }
     }
 

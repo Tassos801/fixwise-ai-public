@@ -63,6 +63,41 @@ class AnnotationData(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class TaskChecklistItem(BaseModel):
+    id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    status: Literal["pending", "active", "done", "blocked"] = "pending"
+    detail: str | None = None
+
+
+class DetectedComponent(BaseModel):
+    label: str = Field(min_length=1)
+    kind: Literal["port", "cable", "component", "slot", "header", "device", "unknown"] = "unknown"
+    confidence: Literal["low", "medium", "high"] = "medium"
+    x: float | None = Field(default=None, ge=0.0, le=1.0)
+    y: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class TaskState(BaseModel):
+    setupType: Literal[
+        "pc_build",
+        "display_setup",
+        "network_setup",
+        "peripheral_setup",
+        "unknown",
+    ] = "unknown"
+    phase: Literal["identify", "connect", "verify", "troubleshoot", "complete"] = "identify"
+    title: str = "Setup checklist"
+    checklist: list[TaskChecklistItem] = Field(default_factory=list)
+    visibleComponents: list[DetectedComponent] = Field(default_factory=list)
+    troubleshootingFocus: Literal[
+        "no_display",
+        "no_power",
+        "not_detected",
+        "network_issue",
+    ] | None = None
+
+
 class AIResponse(BaseModel):
     text: str = Field(min_length=1)
     annotations: list[AnnotationData] = Field(default_factory=list)
@@ -71,6 +106,7 @@ class AIResponse(BaseModel):
     needsCloserFrame: bool = False
     followUpPrompts: list[str] = Field(default_factory=list)
     confidence: Literal["low", "medium", "high"] = "medium"
+    taskState: TaskState | None = None
 
 
 class ResponseMessage(BaseModel):
@@ -88,6 +124,7 @@ class ResponseMessage(BaseModel):
     mode: str = DEFAULT_GUIDANCE_MODE
     suggestedMode: str | None = None
     summary: str | None = None
+    taskState: TaskState | None = None
 
     @field_validator("mode", mode="before")
     @classmethod

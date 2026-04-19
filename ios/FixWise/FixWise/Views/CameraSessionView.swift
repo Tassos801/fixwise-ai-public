@@ -213,6 +213,14 @@ struct CameraSessionView: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
+                // Task copilot — structured setup progress for Machines & Tech
+                if shouldShowTaskCopilot {
+                    taskCopilotPanel
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 6)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
                 // Follow-up prompts — just above controls
                 if shouldShowFollowUpPrompts {
                     followUpChipsView
@@ -237,6 +245,7 @@ struct CameraSessionView: View {
         .animation(.spring(response: 0.4, dampingFraction: 0.82), value: isModePickerVisible)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: guidanceToastVisible)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: shouldShowFollowUpPrompts)
+        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: shouldShowTaskCopilot)
         .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isTorchSliderVisible)
         .animation(.easeInOut(duration: 0.18), value: zoomHUDVisible)
         .animation(.easeInOut(duration: 0.3), value: sessionState.overlay != nil)
@@ -745,6 +754,166 @@ struct CameraSessionView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 4.0, execute: work)
     }
 
+    // MARK: - Task Copilot
+
+    private var shouldShowTaskCopilot: Bool {
+        hasStartedSession && selectedGuidanceMode == .machines && sessionState.taskState != nil
+    }
+
+    @ViewBuilder
+    private var taskCopilotPanel: some View {
+        if let taskState = sessionState.taskState {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: selectedGuidanceMode.systemImage)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.cyan)
+                        .frame(width: 24)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(taskState.title)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                        Text("\(taskState.setupTypeTitle) · \(taskState.phaseTitle)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    if taskState.totalChecklistCount > 0 {
+                        Text("\(taskState.completedChecklistCount)/\(taskState.totalChecklistCount)")
+                            .font(.caption.monospacedDigit().weight(.bold))
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(Color.black.opacity(0.18), in: Capsule())
+                    }
+                }
+
+                if let activeItem = taskState.activeChecklistItem {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: checklistIcon(for: activeItem))
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(checklistColor(for: activeItem))
+                            .frame(width: 18)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(activeItem.title)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            if let detail = activeItem.detail?.trimmingCharacters(in: .whitespacesAndNewlines), !detail.isEmpty {
+                                Text(detail)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                }
+
+                if !taskState.checklist.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(taskState.checklist.prefix(4)) { item in
+                            Capsule()
+                                .fill(checklistColor(for: item).opacity(item.isActive ? 0.9 : 0.45))
+                                .frame(height: 4)
+                        }
+                    }
+                    .frame(height: 4)
+                }
+
+                if !taskState.visibleComponents.isEmpty || taskState.troubleshootingTitle != nil {
+                    HStack(spacing: 6) {
+                        ForEach(taskState.visibleComponents.prefix(3)) { component in
+                            HStack(spacing: 5) {
+                                Image(systemName: componentIcon(for: component.kind))
+                                    .font(.caption2.weight(.bold))
+                                Text(component.label)
+                                    .font(.caption2.weight(.semibold))
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Color.black.opacity(0.16), in: Capsule())
+                        }
+
+                        if let troubleshootingTitle = taskState.troubleshootingTitle {
+                            HStack(spacing: 5) {
+                                Image(systemName: "stethoscope")
+                                    .font(.caption2.weight(.bold))
+                                Text(troubleshootingTitle)
+                                    .font(.caption2.weight(.semibold))
+                                    .lineLimit(1)
+                            }
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Color.orange.opacity(0.16), in: Capsule())
+                        }
+                    }
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: 430)
+            .glassEffect(.regular, in: .rect(cornerRadius: 18))
+        }
+    }
+
+    private func checklistIcon(for item: GuidanceChecklistItem) -> String {
+        switch item.status.normalizedTaskStatus {
+        case "done", "complete", "completed":
+            return "checkmark.circle.fill"
+        case "active":
+            return "arrow.right.circle.fill"
+        case "blocked":
+            return "exclamationmark.triangle.fill"
+        default:
+            return "circle"
+        }
+    }
+
+    private func checklistColor(for item: GuidanceChecklistItem) -> Color {
+        switch item.status.normalizedTaskStatus {
+        case "done", "complete", "completed":
+            return .green
+        case "active":
+            return .cyan
+        case "blocked":
+            return .orange
+        default:
+            return .secondary
+        }
+    }
+
+    private func componentIcon(for kind: String) -> String {
+        switch kind {
+        case "port":
+            return "arrow.left.arrow.right"
+        case "cable":
+            return "cable.connector"
+        case "component":
+            return "cpu"
+        case "slot":
+            return "rectangle.connected.to.line.below"
+        case "header":
+            return "switch.2"
+        case "device":
+            return "externaldrive"
+        default:
+            return "questionmark.circle"
+        }
+    }
+
     // MARK: - Follow-Up Chips
 
     private var shouldShowFollowUpPrompts: Bool {
@@ -1194,7 +1363,8 @@ struct CameraSessionView: View {
                 needsCloserFrame: response.needsCloserFrame ?? false,
                 followUpPrompts: response.followUpPrompts ?? [],
                 confidence: GuidanceConfidence(rawValue: response.confidence?.lowercased() ?? "") ?? .medium,
-                summary: summary?.isEmpty == true ? nil : summary
+                summary: summary?.isEmpty == true ? nil : summary,
+                taskState: response.taskState
             )
             speechPlaybackService.speak(text, audioBase64: response.audio) {
                 maybeStartHandsFreeListening()

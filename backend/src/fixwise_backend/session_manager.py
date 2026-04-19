@@ -5,7 +5,7 @@ from datetime import datetime, UTC
 from typing import Literal
 
 from .guidance_modes import DEFAULT_GUIDANCE_MODE, normalize_guidance_mode
-from .models import FrameMetadata
+from .models import FrameMetadata, TaskState
 
 
 @dataclass
@@ -34,6 +34,7 @@ class SessionContext:
     selected_mode: str
     task_summary: str | None
     last_next_action: str | None
+    task_state: TaskState | None = None
     recent_turns: list[SessionTurn] = field(default_factory=list)
 
 
@@ -48,6 +49,7 @@ class SessionRecord:
     selected_mode: str = DEFAULT_GUIDANCE_MODE
     task_summary: str | None = None
     last_next_action: str | None = None
+    task_state: TaskState | None = None
 
 
 class SessionManager:
@@ -120,6 +122,7 @@ class SessionManager:
         needs_closer_frame: bool = False,
         follow_up_prompts: list[str] | None = None,
         confidence: Literal["low", "medium", "high"] = "medium",
+        task_state: TaskState | None = None,
         mode: str | None = None,
         user_id: str | None = None,
     ) -> SessionTurn:
@@ -137,6 +140,8 @@ class SessionManager:
             confidence=confidence,
         )
         session.turn_history.append(turn)
+        if task_state is not None:
+            session.task_state = task_state
         if next_action:
             base_summary = session.task_summary or _last_user_text(session.turn_history)
             if base_summary and not _looks_like_follow_up(base_summary):
@@ -171,6 +176,7 @@ class SessionManager:
             selected_mode=session.selected_mode,
             task_summary=session.task_summary,
             last_next_action=session.last_next_action,
+            task_state=session.task_state,
             recent_turns=session.turn_history[-3:],
         )
 

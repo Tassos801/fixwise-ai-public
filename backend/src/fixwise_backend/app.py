@@ -51,6 +51,7 @@ from .models import (
     SafetyBlockMessage,
     parse_client_message,
 )
+from .pc_setup_brain import enrich_pc_setup_response
 from .pdf_report import generate_fix_report
 from .rate_limit import (
     InMemoryRateLimiter,
@@ -709,6 +710,12 @@ def create_app(
                             )
                             continue
 
+                    ai_response = enrich_pc_setup_response(
+                        response=ai_response,
+                        prompt=message.text,
+                        mode=selected_mode,
+                        existing_task_state=session_context.task_state if session_context else None,
+                    )
                     resolved_session_manager.record_assistant_turn(
                         message.sessionId,
                         text=ai_response.text,
@@ -716,6 +723,7 @@ def create_app(
                         needs_closer_frame=ai_response.needsCloserFrame,
                         follow_up_prompts=ai_response.followUpPrompts,
                         confidence=ai_response.confidence,
+                        task_state=ai_response.taskState,
                         mode=selected_mode,
                         user_id=user_id,
                     )
@@ -760,6 +768,7 @@ def create_app(
                             mode=selected_mode,
                             suggestedMode=suggested_mode,
                             summary=refreshed_context.task_summary if refreshed_context else None,
+                            taskState=ai_response.taskState,
                         ).model_dump(mode="json", by_alias=True)
                     )
                     continue

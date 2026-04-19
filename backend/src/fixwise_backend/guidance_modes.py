@@ -41,8 +41,25 @@ _JSON_FORMAT = """Return valid JSON with this shape:
   "nextAction": null,
   "needsCloserFrame": false,
   "followUpPrompts": [],
-  "confidence": "low|medium|high"
+  "confidence": "low|medium|high",
+  "taskState": null
 }
+"""
+
+_PC_SETUP_TASK_STATE = """For PC/device setup in Machines & Tech mode, include taskState when relevant:
+{
+  "setupType": "pc_build|display_setup|network_setup|peripheral_setup|unknown",
+  "phase": "identify|connect|verify|troubleshoot|complete",
+  "title": "short task title",
+  "checklist": [
+    { "id": "stable-id", "title": "short step", "status": "pending|active|done|blocked" }
+  ],
+  "visibleComponents": [
+    { "label": "HDMI cable", "kind": "port|cable|component|slot|header|device|unknown", "confidence": "low|medium|high", "x": 0.5, "y": 0.5 }
+  ],
+  "troubleshootingFocus": "no_display|no_power|not_detected|network_issue|null"
+}
+Keep the checklist short and mark exactly one item active unless the task is complete.
 """
 
 
@@ -154,7 +171,7 @@ GUIDANCE_MODES: dict[str, GuidanceModeDefinition] = {
             "Identify ports, connectors, circuit boards, and mechanical parts visible in the frame.\n"
             "Guide the user through appliance troubleshooting, PC building, printer jams, and power tool setup.\n"
             "Warn about static discharge, capacitor hazards, and pinch points before the user opens a panel.\n\n"
-            + _SHARED_PREAMBLE + "\n" + _JSON_FORMAT
+            + _SHARED_PREAMBLE + "\n" + _PC_SETUP_TASK_STATE + "\n" + _JSON_FORMAT
         ),
         keywords=("connector", "port", "cable", "machine", "electronics", "component", "panel"),
         strong_keywords=(

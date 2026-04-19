@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 import test_support  # noqa: F401
-from fixwise_backend.models import FrameMetadata
+from fixwise_backend.models import FrameMetadata, TaskChecklistItem, TaskState
 from fixwise_backend.session_manager import SessionManager
 
 
@@ -47,6 +47,36 @@ class SessionManagerTests(unittest.TestCase):
         self.assertEqual(context.last_next_action, "Keep the camera steady on the connector.")
         self.assertTrue(context.recent_turns)
         self.assertIn("connector", context.task_summary or "")
+
+    def test_session_memory_tracks_latest_task_state(self):
+        manager = SessionManager()
+        task_state = TaskState(
+            setupType="display_setup",
+            phase="connect",
+            title="Connect a monitor",
+            checklist=[
+                TaskChecklistItem(
+                    id="connect-display",
+                    title="Connect the display cable to the GPU",
+                    status="active",
+                )
+            ],
+        )
+
+        manager.record_assistant_turn(
+            "session-1",
+            text="Plug the HDMI cable into the GPU HDMI port.",
+            next_action="Connect the display cable to the GPU.",
+            task_state=task_state,
+            mode="machines",
+        )
+
+        context = manager.build_context("session-1")
+
+        self.assertIsNotNone(context)
+        self.assertIsNotNone(context.task_state)
+        self.assertEqual(context.task_state.setupType, "display_setup")
+        self.assertEqual(context.task_state.checklist[0].status, "active")
 
 
 if __name__ == "__main__":

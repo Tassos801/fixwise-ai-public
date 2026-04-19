@@ -102,6 +102,46 @@ final class VerticalSliceTests: XCTestCase {
         XCTAssertEqual(decoded.audio, "UklGRg==")
     }
 
+    func testIncomingResponseDecodingMapsTaskState() throws {
+        let service = WebSocketService(
+            config: .init(serverURL: URL(string: "ws://localhost:8000/ws/session")!)
+        )
+        let payload = """
+        {
+          "type": "response",
+          "sessionId": "session-1",
+          "text": "Connect the monitor cable to the GPU.",
+          "taskState": {
+            "setupType": "display_setup",
+            "phase": "connect",
+            "title": "Connect a monitor",
+            "checklist": [
+              {
+                "id": "connect-display",
+                "title": "Connect display cable to GPU",
+                "status": "active"
+              }
+            ],
+            "visibleComponents": [
+              {
+                "label": "HDMI cable",
+                "kind": "cable",
+                "confidence": "medium"
+              }
+            ],
+            "troubleshootingFocus": null
+          }
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try service.decode(payload)
+
+        XCTAssertEqual(decoded.taskState?.setupType, "display_setup")
+        XCTAssertEqual(decoded.taskState?.phase, "connect")
+        XCTAssertEqual(decoded.taskState?.checklist.first?.status, "active")
+        XCTAssertEqual(decoded.taskState?.visibleComponents.first?.kind, "cable")
+    }
+
     func testPromptEncodingReflectsModeSwitchesAcrossMessages() throws {
         let service = WebSocketService(
             config: .init(serverURL: URL(string: "ws://localhost:8000/ws/session")!)
@@ -279,6 +319,37 @@ final class VerticalSliceTests: XCTestCase {
         XCTAssertEqual(state.recapNextActionText, "Tighten the valve clockwise a quarter turn.")
         XCTAssertEqual(state.guidanceConfidence, .high)
         XCTAssertTrue(state.needsCloserFrame)
+    }
+
+    @MainActor
+    func testSessionStateTracksTaskState() {
+        let state = SessionState()
+        let taskState = GuidanceTaskState(
+            setupType: "display_setup",
+            phase: "connect",
+            title: "Connect a monitor",
+            checklist: [
+                GuidanceChecklistItem(
+                    id: "connect-display",
+                    title: "Connect display cable to GPU",
+                    status: "active"
+                )
+            ],
+            visibleComponents: [],
+            troubleshootingFocus: nil
+        )
+
+        _ = state.startSession()
+        state.didReceiveResponse(
+            newAnnotations: [],
+            text: "Connect the display cable to the GPU.",
+            taskState: taskState
+        )
+
+        XCTAssertEqual(state.taskState?.setupType, "display_setup")
+        XCTAssertEqual(state.taskState?.activeChecklistItem?.title, "Connect display cable to GPU")
+        XCTAssertEqual(state.taskState?.completedChecklistCount, 0)
+        XCTAssertEqual(state.taskState?.totalChecklistCount, 1)
     }
 
     @MainActor

@@ -72,6 +72,21 @@ def _context_lines(session_context: SessionContext | None) -> list[str]:
         lines.append(f"Session summary: {_compact_text(session_context.task_summary, limit=160)}")
     if session_context.last_next_action:
         lines.append(f"Last next action: {_compact_text(session_context.last_next_action, limit=160)}")
+    if session_context.task_state:
+        active_item = next(
+            (
+                item.title
+                for item in session_context.task_state.checklist
+                if item.status == "active"
+            ),
+            None,
+        )
+        lines.append(
+            "Task state: "
+            f"{session_context.task_state.setupType} / {session_context.task_state.phase}"
+        )
+        if active_item:
+            lines.append(f"Active checklist item: {_compact_text(active_item, limit=120)}")
     if session_context.recent_turns:
         lines.append("Recent turns:")
         for turn in session_context.recent_turns[-3:]:

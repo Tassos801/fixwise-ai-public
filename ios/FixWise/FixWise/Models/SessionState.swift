@@ -177,6 +177,111 @@ enum GuidanceConfidence: String, Codable, Equatable {
     case high
 }
 
+struct GuidanceChecklistItem: Codable, Equatable, Identifiable {
+    let id: String
+    let title: String
+    let status: String
+    let detail: String?
+
+    init(id: String, title: String, status: String, detail: String? = nil) {
+        self.id = id
+        self.title = title
+        self.status = status
+        self.detail = detail
+    }
+
+    var isActive: Bool {
+        status.normalizedTaskStatus == "active"
+    }
+
+    var isComplete: Bool {
+        ["done", "complete", "completed"].contains(status.normalizedTaskStatus)
+    }
+}
+
+struct GuidanceDetectedComponent: Codable, Equatable, Identifiable {
+    let label: String
+    let kind: String
+    let confidence: String
+    let x: Double?
+    let y: Double?
+
+    var id: String {
+        "\(kind)-\(label)"
+    }
+}
+
+struct GuidanceTaskState: Codable, Equatable {
+    let setupType: String
+    let phase: String
+    let title: String
+    let checklist: [GuidanceChecklistItem]
+    let visibleComponents: [GuidanceDetectedComponent]
+    let troubleshootingFocus: String?
+
+    var activeChecklistItem: GuidanceChecklistItem? {
+        checklist.first(where: \.isActive)
+            ?? checklist.first(where: { !$0.isComplete })
+            ?? checklist.first
+    }
+
+    var completedChecklistCount: Int {
+        checklist.filter(\.isComplete).count
+    }
+
+    var totalChecklistCount: Int {
+        checklist.count
+    }
+
+    var setupTypeTitle: String {
+        switch setupType {
+        case "pc_build":
+            return "PC build"
+        case "display_setup":
+            return "Display setup"
+        case "network_setup":
+            return "Network setup"
+        case "peripheral_setup":
+            return "Peripheral setup"
+        default:
+            return "Tech setup"
+        }
+    }
+
+    var phaseTitle: String {
+        switch phase {
+        case "identify":
+            return "Identify"
+        case "connect":
+            return "Connect"
+        case "verify":
+            return "Verify"
+        case "troubleshoot":
+            return "Troubleshoot"
+        case "complete":
+            return "Complete"
+        default:
+            return phase.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+
+    var troubleshootingTitle: String? {
+        guard let troubleshootingFocus, !troubleshootingFocus.isEmpty else { return nil }
+        switch troubleshootingFocus {
+        case "no_display":
+            return "No display"
+        case "no_power":
+            return "No power"
+        case "not_detected":
+            return "Not detected"
+        case "network_issue":
+            return "Network issue"
+        default:
+            return troubleshootingFocus.replacingOccurrences(of: "_", with: " ").capitalized
+        }
+    }
+}
+
 struct ConversationTurn: Identifiable, Equatable {
     enum Role: String, Codable, Equatable {
         case user
@@ -205,6 +310,7 @@ final class SessionState: ObservableObject {
     @Published private(set) var lastNextAction: String?
     @Published private(set) var guidanceConfidence: GuidanceConfidence = .medium
     @Published private(set) var needsCloserFrame = false
+    @Published private(set) var taskState: GuidanceTaskState?
 
     private var startTime: Date?
     private var timer: Timer?
@@ -223,6 +329,7 @@ final class SessionState: ObservableObject {
         lastNextAction = nil
         guidanceConfidence = .medium
         needsCloserFrame = false
+        taskState = nil
         return id
     }
 
@@ -261,18 +368,24 @@ final class SessionState: ObservableObject {
         needsCloserFrame: Bool = false,
         followUpPrompts: [String] = [],
         confidence: GuidanceConfidence = .medium,
-        summary: String? = nil
+        summary: String? = nil,
+        taskState: GuidanceTaskState? = nil
     ) {
         annotations = newAnnotations
         lastGuidanceText = text
-        lastNextAction = nextAction?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        let trimmedNextAction = nextAction?.trimmingCharacters(in: .whitespacesAndNewlines)
+        lastNextAction = trimmedNextAction?.isEmpty == false ? trimmedNextAction : nil
         self.needsCloserFrame = needsCloserFrame
         self.followUpPrompts = followUpPrompts
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         guidanceConfidence = confidence
-        if let summary = summary?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
-            sessionSummary = summary
+        if let taskState {
+            self.taskState = taskState
+        }
+        let trimmedSummary = summary?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmedSummary, !trimmedSummary.isEmpty {
+            sessionSummary = trimmedSummary
         } else if sessionSummary.isEmpty {
             sessionSummary = text
         }
@@ -317,6 +430,7 @@ final class SessionState: ObservableObject {
         lastNextAction = nil
         guidanceConfidence = .medium
         needsCloserFrame = false
+        taskState = nil
         startTime = nil
         stopTimer()
     }
@@ -424,9 +538,8 @@ final class SessionState: ObservableObject {
     }
 }
 
-private extension String {
-    var nonEmpty: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+extension String {
+    var normalizedTaskStatus: String {
+        trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }

@@ -315,6 +315,46 @@ class WebSocketFlowTests(unittest.TestCase):
         self.assertEqual(response["mode"], "car")
         self.assertIsNone(response["suggestedMode"])
 
+    def test_machines_mode_response_includes_pc_setup_task_state(self):
+        provider = RecordingProvider()
+        app = create_app(
+            Settings(ai_mode="mock", openai_api_key=None, database_path=":memory:"),
+            provider=provider,
+        )
+
+        with TestClient(app) as client:
+            with client.websocket_connect("/ws/session") as websocket:
+                websocket.send_json(
+                    {
+                        "type": "frame",
+                        "sessionId": "session-pc-setup",
+                        "timestamp": 1.0,
+                        "frame": "ZmFrZS1qcGVn",
+                        "frameMetadata": {
+                            "width": 512,
+                            "height": 512,
+                            "sceneDelta": 0.11,
+                        },
+                    }
+                )
+                websocket.send_json(
+                    {
+                        "type": "prompt",
+                        "sessionId": "session-pc-setup",
+                        "timestamp": 2.0,
+                        "text": "I am plugging HDMI into my GPU for a monitor. What next?",
+                        "mode": "machines",
+                    }
+                )
+
+                response = websocket.receive_json()
+
+        self.assertEqual(response["mode"], "machines")
+        self.assertIn("taskState", response)
+        self.assertEqual(response["taskState"]["setupType"], "display_setup")
+        self.assertEqual(response["taskState"]["phase"], "connect")
+        self.assertTrue(response["taskState"]["checklist"])
+
     def test_guest_websocket_sessions_are_isolated_identities(self):
         db = Database(":memory:")
         app = create_app(

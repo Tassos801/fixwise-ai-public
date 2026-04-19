@@ -43,6 +43,7 @@ final class WebSocketService: ObservableObject {
             let sessionId: String
             let timestamp: TimeInterval
             let text: String
+            let mode: GuidanceMode
         }
 
         struct FrameMetadata: Encodable {
@@ -76,10 +77,69 @@ final class WebSocketService: ObservableObject {
         let text: String?
         let annotations: [AnnotationData]?
         let stepNumber: Int?
+        let audio: String?
         let safetyWarning: String?
         let reason: String?
         let recommendation: String?
         let message: String?
+        let nextAction: String?
+        let needsCloserFrame: Bool?
+        let followUpPrompts: [String]?
+        let confidence: String?
+        let mode: String?
+        let suggestedMode: String?
+        let summary: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case type
+            case sessionId
+            case text
+            case annotations
+            case stepNumber
+            case audio
+            case safetyWarning
+            case reason
+            case recommendation
+            case message
+            case nextAction = "nextAction"
+            case nextActionSnake = "next_action"
+            case needsCloserFrame = "needsCloserFrame"
+            case needsCloserFrameSnake = "needs_closer_frame"
+            case followUpPrompts = "followUpPrompts"
+            case followUpPromptsSnake = "follow_up_prompts"
+            case confidence
+            case mode
+            case suggestedMode = "suggestedMode"
+            case suggestedModeSnake = "suggested_mode"
+            case summary
+            case summarySnake = "session_summary"
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            type = try container.decode(String.self, forKey: .type)
+            sessionId = try container.decodeIfPresent(String.self, forKey: .sessionId)
+            text = try container.decodeIfPresent(String.self, forKey: .text)
+            annotations = try container.decodeIfPresent([AnnotationData].self, forKey: .annotations)
+            stepNumber = try container.decodeIfPresent(Int.self, forKey: .stepNumber)
+            audio = try container.decodeIfPresent(String.self, forKey: .audio)
+            safetyWarning = try container.decodeIfPresent(String.self, forKey: .safetyWarning)
+            reason = try container.decodeIfPresent(String.self, forKey: .reason)
+            recommendation = try container.decodeIfPresent(String.self, forKey: .recommendation)
+            message = try container.decodeIfPresent(String.self, forKey: .message)
+            nextAction = try container.decodeIfPresent(String.self, forKey: .nextAction)
+                ?? container.decodeIfPresent(String.self, forKey: .nextActionSnake)
+            needsCloserFrame = try container.decodeIfPresent(Bool.self, forKey: .needsCloserFrame)
+                ?? container.decodeIfPresent(Bool.self, forKey: .needsCloserFrameSnake)
+            followUpPrompts = try container.decodeIfPresent([String].self, forKey: .followUpPrompts)
+                ?? container.decodeIfPresent([String].self, forKey: .followUpPromptsSnake)
+            confidence = try container.decodeIfPresent(String.self, forKey: .confidence)
+            mode = try container.decodeIfPresent(String.self, forKey: .mode)
+            suggestedMode = try container.decodeIfPresent(String.self, forKey: .suggestedMode)
+                ?? container.decodeIfPresent(String.self, forKey: .suggestedModeSnake)
+            summary = try container.decodeIfPresent(String.self, forKey: .summary)
+                ?? container.decodeIfPresent(String.self, forKey: .summarySnake)
+        }
     }
 
     struct AnnotationData: Decodable {
@@ -150,7 +210,15 @@ final class WebSocketService: ObservableObject {
         webSocketTask = task
         task.resume()
 
-        performHandshake()
+        // URLSessionWebSocketTask queues sends until the handshake completes,
+        // so transition to .connected immediately and rely on receive() errors
+        // to surface real connection failures. Avoids a wasted ping RTT.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.webSocketTask === task else { return }
+            self.connectionState = .connected
+            self.reconnectAttempt = 0
+        }
+        listenForMessages()
     }
 
     func disconnect() {
@@ -199,12 +267,13 @@ final class WebSocketService: ObservableObject {
     }
 
     @discardableResult
-    func sendPrompt(_ prompt: String, sessionId: String) -> Bool {
+    func sendPrompt(_ prompt: String, sessionId: String, mode: GuidanceMode) -> Bool {
         let message = OutgoingMessage.prompt(
             .init(
                 sessionId: sessionId,
                 timestamp: Date().timeIntervalSince1970,
-                text: prompt
+                text: prompt,
+                mode: mode
             )
         )
         return send(message)
@@ -221,22 +290,6 @@ final class WebSocketService: ObservableObject {
 
     func decode(_ data: Data) throws -> IncomingResponse {
         try decoder.decode(IncomingResponse.self, from: data)
-    }
-
-    private func performHandshake() {
-        webSocketTask?.sendPing { [weak self] error in
-            DispatchQueue.main.async {
-                guard let self else { return }
-                if let error {
-                    self.handleDisconnect(error: error)
-                    return
-                }
-
-                self.connectionState = .connected
-                self.reconnectAttempt = 0
-                self.listenForMessages()
-            }
-        }
     }
 
     private func listenForMessages() {

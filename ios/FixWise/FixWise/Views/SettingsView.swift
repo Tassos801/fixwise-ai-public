@@ -16,8 +16,8 @@ struct SettingsView: View {
     @State private var isTestingConnection = false
     @State private var isSavingKey = false
     @State private var isRemovingKey = false
-    @State private var backendHealth: BackendHealth?
     @State private var alertItem: AlertItem?
+    @State private var showAdvancedBackendSection = false
 
     init(allowsDismissal: Bool = true) {
         self.allowsDismissal = allowsDismissal
@@ -36,10 +36,10 @@ struct SettingsView: View {
                 }
 
                 accountSection
-                backendSection
                 aiProviderNoticeSection
+                advancedBackendSection
 
-                if authStore.isAuthenticated {
+                if authStore.canManageProviderKey {
                     apiKeySection
                 }
 
@@ -67,24 +67,42 @@ struct SettingsView: View {
     private var accountSection: some View {
         Section {
             if authStore.isAuthenticated, let user = authStore.user {
-                LabeledContent("Email", value: user.email)
-                LabeledContent("Plan", value: user.tier.capitalized)
+                if authStore.isGuestSession {
+                    LabeledContent("Mode", value: "Guest")
 
-                if let displayName = user.displayName, !displayName.isEmpty {
-                    LabeledContent("Display Name", value: displayName)
-                }
+                    if let displayName = user.displayName, !displayName.isEmpty {
+                        LabeledContent("Guest Name", value: displayName)
+                    }
 
-                Button("Refresh Account") {
-                    Task {
-                        let refreshed = await authStore.refreshCurrentUser(using: backendConfiguration)
-                        if !refreshed, let message = authStore.lastErrorMessage {
-                            alertItem = AlertItem(title: "Refresh Failed", message: message)
+                    Text("Guest access is active on this device. Create a FixWise account only if you want synced history, reports, or a saved provider key.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    LabeledContent("Email", value: user.email)
+                    LabeledContent("Plan", value: user.tier.capitalized)
+
+                    if let displayName = user.displayName, !displayName.isEmpty {
+                        LabeledContent("Display Name", value: displayName)
+                    }
+
+                    Button("Refresh Account") {
+                        Task {
+                            let refreshed = await authStore.refreshCurrentUser(using: backendConfiguration)
+                            if !refreshed, let message = authStore.lastErrorMessage {
+                                alertItem = AlertItem(title: "Refresh Failed", message: message)
+                            }
                         }
                     }
                 }
 
-                Button("Sign Out", role: .destructive) {
-                    authStore.signOut()
+                Button(authStore.isGuestSession ? "Return to Guest" : "Sign Out", role: .destructive) {
+                    Task {
+                        if authStore.isGuestSession {
+                            authStore.signOut()
+                        } else {
+                            await authStore.signOutAndContinueAsGuest(using: backendConfiguration)
+                        }
+                    }
                 }
             } else {
                 Text(accountIntroCopy)
@@ -152,18 +170,11 @@ struct SettingsView: View {
                     authStore.clearErrorMessage()
                 }
                 .font(.footnote.weight(.semibold))
-
-                if allowsDismissal {
-                    Button("Use Without Account") {
-                        dismiss()
-                    }
-                    .font(.footnote.weight(.semibold))
-                }
             }
         } header: {
             Text(allowsDismissal ? "FixWise Account (Optional)" : "FixWise Account")
         } footer: {
-            Text("You can use FixWise without an account. Create one only if you want saved history, reports, and an encrypted provider key.")
+            Text("Guest access is created automatically on first launch. Create a FixWise account only if you want synced history, reports, and an encrypted provider key.")
         }
     }
 
@@ -173,62 +184,76 @@ struct SettingsView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
 
-            Text("This backend can be configured for providers like OpenAI or Gemma. The key field below will use whichever provider the backend expects.")
+            Text("This backend can be configured for providers like OpenAI or Gemma. Guests can use the hosted provider without adding a key.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
     }
 
-    private var backendSection: some View {
+    private var advancedBackendSection: some View {
         Section {
-            if let deploymentBadgeText = backendConfiguration.deploymentBadgeText {
-                HStack {
-                    Text("Deployment")
-                    Spacer()
-                    Text(deploymentBadgeText)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.green)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.green.opacity(0.15), in: Capsule())
-                }
-            }
-
-            if let backendHealth {
-                backendHealthSummary(backendHealth)
-            }
-
-            TextField("https://your-backend.example.com", text: $backendConfiguration.backendHTTPURLString)
-                .keyboardType(.URL)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-
-            LabeledContent("WebSocket") {
-                Text(backendConfiguration.backendWebSocketURLString)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.trailing)
-            }
-
-            Button {
-                Task {
-                    await testConnection()
-                }
-            } label: {
-                HStack {
-                    if isTestingConnection {
-                        ProgressView()
+            DisclosureGroup(isExpanded: $showAdvancedBackendSection) {
+                VStack(alignment: .leading, spacing: 14) {
+                    if let deploymentBadgeText = backendConfiguration.deploymentBadgeText {
+                        HStack {
+                            Text("Deployment")
+                            Spacer()
+                            Text(deploymentBadgeText)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.green)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Color.green.opacity(0.15), in: Capsule())
+                        }
                     }
-                    Text("Test Connection")
+
+                    if let backendHealth = backendConfiguration.backendHealth {
+                        backendHealthSummary(backendHealth)
+                    } else {
+                        Text("Tap Test Connection to verify the hosted backend and live provider state.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    TextField("https://your-backend.example.com", text: $backendConfiguration.backendHTTPURLString)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    LabeledContent("WebSocket") {
+                        Text(backendConfiguration.backendWebSocketURLString)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.trailing)
+                    }
+
+                    Button {
+                        Task {
+                            await testConnection()
+                        }
+                    } label: {
+                        HStack {
+                            if isTestingConnection {
+                                ProgressView()
+                            }
+                            Text("Test Connection")
+                        }
+                    }
+                    .disabled(isTestingConnection)
+
+                    Button("Reset to Hosted Default") {
+                        backendConfiguration.resetToDefaults()
+                    }
+                }
+                .padding(.vertical, 8)
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Advanced / Developer")
+                    Text("Backend URL, connection checks, and local override testing.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .disabled(isTestingConnection)
-
-            Button("Reset to Default") {
-                backendConfiguration.resetToDefaults()
-            }
-        } header: {
-            Text("Backend")
         } footer: {
             Text("Use a public HTTPS backend URL for device testing. The live session will derive its WSS endpoint automatically.")
         }
@@ -301,7 +326,7 @@ struct SettingsView: View {
     }
 
     private var apiKeySectionTitle: String {
-        switch backendHealth?.configuredProvider {
+        switch backendConfiguration.backendHealth?.configuredProvider {
         case "gemma":
             return "Gemma API Key (Google AI Studio)"
         case "openai":
@@ -312,7 +337,7 @@ struct SettingsView: View {
     }
 
     private var apiKeyPlaceholder: String {
-        switch backendHealth?.configuredProvider {
+        switch backendConfiguration.backendHealth?.configuredProvider {
         case "gemma":
             return "AIza..."
         case "openai":
@@ -377,7 +402,7 @@ struct SettingsView: View {
     private var accountIntroCopy: String {
         switch authMode {
         case .register:
-            return "Create a FixWise account with just your email and password. We’ll infer a friendly name automatically."
+            return "Create a FixWise account with just your email and password. Guest access is already available on this device."
         case .signIn:
             return "Sign in with the email and password from your existing FixWise account."
         }
@@ -393,29 +418,16 @@ struct SettingsView: View {
         isTestingConnection = true
         defer { isTestingConnection = false }
 
-        do {
-            let (data, response) = try await URLSession.shared.data(for: backendConfiguration.request(path: "/health"))
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw URLError(.badServerResponse)
-            }
-
-            if httpResponse.statusCode == 200 {
-                let decodedHealth = try? JSONDecoder().decode(BackendHealth.self, from: data)
-                backendHealth = decodedHealth
-                alertItem = AlertItem(
-                    title: "Connected",
-                    message: connectionSuccessMessage(for: decodedHealth)
-                )
-            } else {
-                backendHealth = nil
-                alertItem = AlertItem(
-                    title: "Connection Failed",
-                    message: "Server returned HTTP \(httpResponse.statusCode)."
-                )
-            }
-        } catch {
-            backendHealth = nil
-            alertItem = AlertItem(title: "Connection Failed", message: error.localizedDescription)
+        if let decodedHealth = await backendConfiguration.refreshHealth() {
+            alertItem = AlertItem(
+                title: "Connected",
+                message: connectionSuccessMessage(for: decodedHealth)
+            )
+        } else {
+            alertItem = AlertItem(
+                title: "Connection Failed",
+                message: "The backend could not be reached or did not return healthy status."
+            )
         }
     }
 
@@ -570,64 +582,6 @@ private struct AlertItem: Identifiable {
     let id = UUID()
     let title: String
     let message: String
-}
-
-private struct BackendHealth: Decodable {
-    let status: String
-    let environment: String?
-    let provider: String?
-    let desiredProvider: String?
-    let liveReady: Bool?
-    let ai: AIStatus?
-
-    struct AIStatus: Decodable {
-        let provider: String?
-        let configuredProvider: String?
-        let liveReady: Bool?
-        let model: String?
-    }
-
-    var effectiveProvider: String {
-        (ai?.provider ?? provider ?? "unknown").lowercased()
-    }
-
-    var configuredProvider: String {
-        (ai?.configuredProvider ?? desiredProvider ?? effectiveProvider).lowercased()
-    }
-
-    var isLiveReady: Bool {
-        ai?.liveReady ?? liveReady ?? false
-    }
-
-    var displayProviderName: String {
-        switch effectiveProvider {
-        case "mock":
-            return "Mock Guidance"
-        case "openai":
-            return isLiveReady ? "OpenAI Live" : "OpenAI"
-        case "gemma":
-            return isLiveReady ? "Gemma Live" : "Gemma"
-        case "unavailable":
-            return "Unavailable"
-        default:
-            return effectiveProvider.capitalized
-        }
-    }
-
-    func guidanceHint(hasSavedAPIKey: Bool) -> String? {
-        if effectiveProvider == "mock" {
-            if hasSavedAPIKey {
-                return "A BYOK key is saved on your account, but this backend is still serving mock guidance right now."
-            }
-            return "This backend is healthy but still using mock guidance. Sign in and save a BYOK provider key to enable live AI."
-        }
-
-        if !isLiveReady {
-            return "Live AI is not fully configured on this backend yet."
-        }
-
-        return nil
-    }
 }
 
 #Preview {

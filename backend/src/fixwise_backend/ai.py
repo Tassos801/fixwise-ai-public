@@ -2,42 +2,24 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import httpx
 
 from .config import Settings
-from .models import AIResponse, AnnotationData
+from .guidance_modes import (
+    get_guidance_mode_label,
+    get_system_prompt,
+    normalize_guidance_mode,
+)
+from .models import AIResponse, AnnotationData, FrameMetadata
+from .session_manager import SessionContext
 
 
 logger = logging.getLogger("fixwise.ai")
 
-SYSTEM_PROMPT = """You are FixWise AI, a helpful visual assistant. You can see what the user's camera sees.
-
-ALWAYS answer the user's question directly and helpfully. Never refuse. Never say you cannot assist. If you see something in the image, describe it and help with whatever the user asks.
-
-You help with ANY task: repairs, identification, cooking, cleaning, tech, gardening, cars, anything the user points their camera at. If relevant, mention safety tips briefly but always provide the answer first.
-
-Keep your text response short (1-3 sentences) since it will be spoken aloud.
-
-Return valid JSON with this shape:
-{
-  "text": "your helpful spoken answer",
-  "annotations": [
-    {
-      "type": "circle|arrow|label|bounding_box",
-      "label": "Description",
-      "x": 0.0,
-      "y": 0.0,
-      "radius": 0.0,
-      "color": "#FF6B35",
-      "from": { "x": 0.0, "y": 0.0 },
-      "to": { "x": 0.0, "y": 0.0 }
-    }
-  ],
-  "safetyWarning": null
-}
-"""
+LOW_QUALITY_MIN_DIMENSION = 360
+LOW_QUALITY_MIN_SCENE_DELTA = 0.45
 
 
 def _normalize_annotations(parsed: dict[str, Any]) -> None:
@@ -61,6 +43,105 @@ def _normalize_annotations(parsed: dict[str, Any]) -> None:
                         point[coord] = min(val / 1000.0, 1.0)
 
 
+def _compact_text(text: str, *, limit: int = 120) -> str:
+    stripped = " ".join(text.strip().split())
+    if len(stripped) <= limit:
+        return stripped
+    return stripped[: limit - 1].rstrip() + "…"
+
+
+def _mode_focus_target(mode: str) -> str:
+    normalized = normalize_guidance_mode(mode)
+    return {
+        "general": "part",
+        "home_repair": "fixture, fastener, or connection",
+        "gardening": "plant, leaf, or stem",
+        "gym": "movement or equipment setup",
+        "cooking": "ingredient, pan, or dish",
+        "car": "engine part or service point",
+        "machines": "connector, panel, or component",
+    }.get(normalized, "part")
+
+
+def _context_lines(session_context: SessionContext | None) -> list[str]:
+    if session_context is None:
+        return []
+
+    lines: list[str] = []
+    if session_context.task_summary:
+        lines.append(f"Session summary: {_compact_text(session_context.task_summary, limit=160)}")
+    if session_context.last_next_action:
+        lines.append(f"Last next action: {_compact_text(session_context.last_next_action, limit=160)}")
+    if session_context.recent_turns:
+        lines.append("Recent turns:")
+        for turn in session_context.recent_turns[-3:]:
+            prefix = "User" if turn.role == "user" else "Assistant"
+            details = _compact_text(turn.text, limit=140)
+            if turn.role == "assistant" and turn.next_action:
+                details = f"{details} | Next: {_compact_text(turn.next_action, limit=80)}"
+            lines.append(f"- {prefix}: {details}")
+    return lines
+
+
+def _build_context_prompt(
+    *,
+    prompt: str,
+    session_context: SessionContext | None,
+    frame_metadata: FrameMetadata | None,
+) -> str:
+    parts: list[str] = []
+    context_lines = _context_lines(session_context)
+    if context_lines:
+        parts.append("SESSION MEMORY:\n" + "\n".join(context_lines))
+    if frame_metadata is not None:
+        quality_notes = _frame_quality_notes(frame_metadata)
+        if quality_notes:
+            parts.append("FRAME QUALITY:\n" + "\n".join(f"- {note}" for note in quality_notes))
+    parts.append(f"USER QUESTION:\n{prompt}")
+    return "\n\n".join(parts)
+
+
+def _frame_quality_notes(frame_metadata: FrameMetadata) -> list[str]:
+    notes: list[str] = []
+    if frame_metadata.width < LOW_QUALITY_MIN_DIMENSION or frame_metadata.height < LOW_QUALITY_MIN_DIMENSION:
+        notes.append("The frame is small and may need a closer view.")
+    if frame_metadata.sceneDelta >= LOW_QUALITY_MIN_SCENE_DELTA:
+        notes.append("The scene is changing quickly, so the camera may be moving too much.")
+    return notes
+
+
+def _frame_needs_closer_view(frame_metadata: FrameMetadata | None) -> bool:
+    if frame_metadata is None:
+        return False
+    if frame_metadata.width < LOW_QUALITY_MIN_DIMENSION or frame_metadata.height < LOW_QUALITY_MIN_DIMENSION:
+        return True
+    if frame_metadata.sceneDelta >= LOW_QUALITY_MIN_SCENE_DELTA:
+        return True
+    return False
+
+
+def _make_closer_frame_response(*, prompt: str, frame_metadata: FrameMetadata | None) -> AIResponse:
+    notes = _frame_quality_notes(frame_metadata) if frame_metadata else []
+    text = (
+        "I need a closer, steadier view before I can be confident. "
+        "Move the phone closer to the exact part, hold it still for a second, and keep the target centered."
+    )
+    if notes:
+        text = f"{text} {notes[0]}"
+    return AIResponse(
+        text=text,
+        annotations=[],
+        safetyWarning=None,
+        nextAction="Move closer to the exact part and hold the phone steady.",
+        needsCloserFrame=True,
+        followUpPrompts=[
+            "Can you move closer and keep the target centered?",
+            "What exact part should I focus on next?",
+        ],
+        confidence="low",
+    )
+
+
 class ProviderConfigurationError(RuntimeError):
     """Raised when live AI is requested without the required configuration."""
 
@@ -70,8 +151,11 @@ class AIProvider(Protocol):
         self,
         *,
         frame_b64: str | None,
+        frame_metadata: FrameMetadata | None,
         prompt: str,
+        mode: str,
         session_id: str,
+        session_context: SessionContext | None = None,
     ) -> AIResponse: ...
 
     @property
@@ -82,6 +166,27 @@ class MockAIProvider:
     def _contains_any(self, text: str, phrases: tuple[str, ...]) -> bool:
         return any(phrase in text for phrase in phrases)
 
+    def _response(
+        self,
+        *,
+        text: str,
+        annotations: list[AnnotationData] | None = None,
+        safety_warning: str | None = None,
+        next_action: str | None = None,
+        needs_closer_frame: bool = False,
+        follow_up_prompts: list[str] | None = None,
+        confidence: Literal["low", "medium", "high"] = "medium",
+    ) -> AIResponse:
+        return AIResponse(
+            text=text,
+            annotations=annotations or [],
+            safetyWarning=safety_warning,
+            nextAction=next_action,
+            needsCloserFrame=needs_closer_frame,
+            followUpPrompts=follow_up_prompts or [],
+            confidence=confidence,
+        )
+
     @property
     def provider_name(self) -> str:
         return "mock"
@@ -90,10 +195,21 @@ class MockAIProvider:
         self,
         *,
         frame_b64: str | None,
+        frame_metadata: FrameMetadata | None,
         prompt: str,
+        mode: str,
         session_id: str,
+        session_context: SessionContext | None = None,
     ) -> AIResponse:
         lower = prompt.lower()
+        selected_mode = normalize_guidance_mode(mode)
+        focus_target = _mode_focus_target(selected_mode)
+        mode_label = get_guidance_mode_label(selected_mode)
+        recent_summary = session_context.task_summary if session_context else None
+        last_next_action = session_context.last_next_action if session_context else None
+        if _frame_needs_closer_view(frame_metadata):
+            return _make_closer_frame_response(prompt=prompt, frame_metadata=frame_metadata)
+
         asks_next_step = self._contains_any(
             lower,
             (
@@ -133,6 +249,52 @@ class MockAIProvider:
                 "tool should i use",
             ),
         )
+        if asks_next_step and last_next_action:
+            text = (
+                f"Based on where we left off, the next small step is to {last_next_action.lower()}. "
+                "Keep the phone steady while you do that, and then ask me what changed."
+            )
+            return self._response(
+                text=text,
+                annotations=[
+                    AnnotationData(
+                        type="label",
+                        label="Next step",
+                        x=0.5,
+                        y=0.28,
+                        color="#2B6CB0",
+                    )
+                ],
+                next_action=last_next_action,
+                follow_up_prompts=[
+                    "Show me the result after that step.",
+                    "Do you want me to zoom in on anything specific?",
+                ],
+                confidence="high",
+            )
+        if asks_next_step and recent_summary:
+            text = (
+                f"You're working on {_compact_text(recent_summary, limit=80)}. "
+                f"The next small step is to keep the camera steady on the exact {focus_target} and make the smallest reversible change first."
+            )
+            return self._response(
+                text=text,
+                annotations=[
+                    AnnotationData(
+                        type="label",
+                        label="Start here",
+                        x=0.5,
+                        y=0.35,
+                        color="#2B6CB0",
+                    )
+                ],
+                next_action=f"Keep the camera steady on the exact {focus_target} and make the smallest reversible change first.",
+                follow_up_prompts=[
+                    "Do you want me to inspect a specific fastener or connector?",
+                    "Should I stay focused on this same part?",
+                ],
+                confidence="high",
+            )
         if "valve" in lower:
             annotations = [
                 AnnotationData(
@@ -145,6 +307,16 @@ class MockAIProvider:
                 )
             ]
             text = "I highlighted the valve. Turn it counterclockwise slowly and stop if you feel unusual resistance."
+            return self._response(
+                text=text,
+                annotations=annotations,
+                next_action="Turn the valve counterclockwise slowly and stop if you feel unusual resistance.",
+                follow_up_prompts=[
+                    "Do you want me to help verify the valve direction?",
+                    "Should I look for a shutoff mark or label next?",
+                ],
+                confidence="high",
+            )
         elif "cable" in lower or "plug" in lower:
             annotations = [
                 AnnotationData(
@@ -156,6 +328,16 @@ class MockAIProvider:
                 )
             ]
             text = "I marked the connection point. Line the cable up gently before pressing it into place."
+            return self._response(
+                text=text,
+                annotations=annotations,
+                next_action="Line the cable up gently before pressing it into place.",
+                follow_up_prompts=[
+                    "Do you want me to check the connector orientation?",
+                    "Should I help you confirm the fit after you plug it in?",
+                ],
+                confidence="high",
+            )
         elif asks_safety:
             annotations = [
                 AnnotationData(
@@ -168,8 +350,18 @@ class MockAIProvider:
             ]
             text = (
                 "I do not see an obvious emergency from this view, but stay cautious. "
-                "Before touching anything, cut power or ignition if possible, keep clear of pinch points, "
-                "and use eye protection if debris could move."
+                    "Before touching anything, cut power or ignition if possible, keep clear of pinch points, "
+                    "and use eye protection if debris could move."
+                )
+            return self._response(
+                text=text,
+                annotations=annotations,
+                next_action="Confirm the area is powered down or otherwise safe before touching it.",
+                follow_up_prompts=[
+                    "Do you want me to look for a shutoff or disconnect point?",
+                    "Should I check for pinch points or moving parts next?",
+                ],
+                confidence="high",
             )
         elif asks_tools:
             annotations = [
@@ -185,6 +377,16 @@ class MockAIProvider:
                 "Start with a flashlight and the simplest hand tool that fits the fastener cleanly. "
                 "Keep a small tray for loose parts, and avoid forcing anything if the tool fit feels sloppy."
             )
+            return self._response(
+                text=text,
+                annotations=annotations,
+                next_action="Gather a flashlight and the simplest tool that fits the fastener cleanly.",
+                follow_up_prompts=[
+                    "Do you want me to identify the fastener type?",
+                    "Should I help you check whether the tool fit is correct?",
+                ],
+                confidence="high",
+            )
         elif asks_next_step:
             annotations = [
                 AnnotationData(
@@ -196,9 +398,19 @@ class MockAIProvider:
                 )
             ]
             text = (
-                "I can see the workspace. Start with the smallest reversible action: move a little closer to the exact "
-                "part you want to touch, hold the phone steady, and inspect the fastener or connector before moving it. "
+                f"I can see the {mode_label.lower()} workspace. Start with the smallest reversible action: move a little closer to the exact "
+                f"{focus_target} you want to touch, hold the phone steady, and inspect it before moving it. "
                 "If you want, ask whether this is the right part, whether it looks safe, or what tool to use next."
+            )
+            return self._response(
+                text=text,
+                annotations=annotations,
+                next_action=f"Move a little closer to the exact {focus_target}, hold the phone steady, and inspect it before moving it.",
+                follow_up_prompts=[
+                    "Want me to help identify the exact part?",
+                    "Should I tell you whether it looks safe before you touch it?",
+                ],
+                confidence="medium",
             )
         elif asks_identification:
             annotations = [
@@ -211,8 +423,19 @@ class MockAIProvider:
                 )
             ]
             text = (
-                "I can see the general workspace, but I need a closer view of the exact part to identify it well. "
-                "Center the component you care about and keep the phone still for a second."
+                f"I can see the general {mode_label.lower()} workspace, but I need a closer view of the exact {focus_target} to identify it well. "
+                "Center it and keep the phone still for a second."
+            )
+            return self._response(
+                text=text,
+                annotations=annotations,
+                next_action=f"Center the exact {focus_target} you care about and keep the phone still for a second.",
+                needs_closer_frame=True,
+                follow_up_prompts=[
+                    "Can you center the exact part in view?",
+                    "Should I help identify a label or connector instead?",
+                ],
+                confidence="medium",
             )
         elif frame_b64:
             annotations = [
@@ -226,13 +449,32 @@ class MockAIProvider:
             ]
             text = (
                 "I can see the area you mean. "
-                "Keep the camera steady on the exact part you want help with, and I will guide you through the next small step."
+                f"Keep the camera steady on the exact {focus_target} you want help with, and I will guide you through the next small step."
+            )
+            return self._response(
+                text=text,
+                annotations=annotations,
+                next_action=f"Keep the camera steady on the exact {focus_target} you want help with.",
+                follow_up_prompts=[
+                    "Should I zoom in on a different angle?",
+                    "Do you want me to help with the next small step?",
+                ],
+                confidence="medium",
             )
         else:
             annotations = []
             text = "I do not have a frame yet. Point the camera at the task area, then ask your question again."
-
-        return AIResponse(text=text, annotations=annotations, safetyWarning=None)
+            return self._response(
+                text=text,
+                annotations=annotations,
+                next_action="Point the camera at the task area and ask again.",
+                needs_closer_frame=True,
+                follow_up_prompts=[
+                    "Can you point the camera at the work area?",
+                    "Should I help once you have the part centered?",
+                ],
+                confidence="low",
+            )
 
 
 class UnavailableAIProvider:
@@ -247,10 +489,13 @@ class UnavailableAIProvider:
         self,
         *,
         frame_b64: str | None,
+        frame_metadata: FrameMetadata | None,
         prompt: str,
+        mode: str,
         session_id: str,
+        session_context: SessionContext | None = None,
     ) -> AIResponse:
-        raise RuntimeError(self._message)
+        raise ProviderConfigurationError(self._message)
 
 
 def _coerce_json_payload(raw_content: str, *, provider_name: str) -> dict[str, Any]:
@@ -352,10 +597,19 @@ class OpenAIVisionProvider:
         self,
         *,
         frame_b64: str | None,
+        frame_metadata: FrameMetadata | None,
         prompt: str,
+        mode: str,
         session_id: str,
+        session_context: SessionContext | None = None,
     ) -> AIResponse:
-        content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+        system_prompt = get_system_prompt(mode)
+        prompt_text = _build_context_prompt(
+            prompt=prompt,
+            session_context=session_context,
+            frame_metadata=frame_metadata,
+        )
+        content: list[dict[str, Any]] = []
         if frame_b64:
             content.insert(
                 0,
@@ -373,8 +627,8 @@ class OpenAIVisionProvider:
             response_format={"type": "json_object"},
             max_tokens=600,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": content},
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": [{"type": "text", "text": prompt_text}, *content]},
             ],
         )
 
@@ -400,10 +654,19 @@ class GemmaVisionProvider:
         self,
         *,
         frame_b64: str | None,
+        frame_metadata: FrameMetadata | None,
         prompt: str,
+        mode: str,
         session_id: str,
+        session_context: SessionContext | None = None,
     ) -> AIResponse:
-        parts: list[dict[str, Any]] = [{"text": prompt}]
+        system_prompt = get_system_prompt(mode)
+        prompt_text = _build_context_prompt(
+            prompt=prompt,
+            session_context=session_context,
+            frame_metadata=frame_metadata,
+        )
+        parts: list[dict[str, Any]] = []
         if frame_b64:
             parts.insert(
                 0,
@@ -417,12 +680,12 @@ class GemmaVisionProvider:
 
         payload = {
             "system_instruction": {
-                "parts": [{"text": SYSTEM_PROMPT}],
+                "parts": [{"text": system_prompt}],
             },
             "contents": [
                 {
                     "role": "user",
-                    "parts": parts,
+                    "parts": [{"text": prompt_text}, *parts],
                 }
             ],
             "generationConfig": {
@@ -555,11 +818,13 @@ def build_ai_provider(settings: Settings, *, api_key_override: str | None = None
     if settings.active_ai_api_key:
         return _build_live_provider(settings, api_key=settings.active_ai_api_key)
 
-    if settings.ai_mode == "live":
+    if settings.ai_mode == "live" or (
+        settings.environment == "production" and settings.ai_mode == "auto"
+    ):
         return UnavailableAIProvider(_required_key_message(settings))
 
     logger.warning(
-        "No configured API key found for %s provider; falling back to mock AI provider.",
+        "No configured API key found for %s provider; falling back to mock AI provider in development.",
         settings.ai_provider,
     )
     return MockAIProvider()

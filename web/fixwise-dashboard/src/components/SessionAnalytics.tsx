@@ -1,16 +1,13 @@
 import { useMemo, useState } from 'react';
-
-interface Session {
-  id: string;
-  status: string;
-  stepCount: number;
-  startedAt: string;
-  endedAt: string | null;
-  reportUrl: string | null;
-}
+import {
+  resolveSessionNextAction,
+  resolveSessionSummary,
+  resolveSessionThumbnail,
+  type SessionListItem,
+} from '../types/sessions';
 
 interface SessionAnalyticsProps {
-  sessions: Session[];
+  sessions: SessionListItem[];
   onViewAll?: () => void;
 }
 
@@ -210,20 +207,25 @@ export function SessionAnalytics({ sessions, onViewAll }: SessionAnalyticsProps)
         ) : (
           <ul className="divide-y divide-gray-100">
             {recentSessions.map((session) => (
-              <li key={session.id} className="flex items-center justify-between px-6 py-3">
-                <div className="flex items-center gap-3">
-                  <StatusDot status={session.status} />
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      {session.id.slice(0, 8)}...
-                    </p>
-                    <p className="text-xs text-gray-400">{timeAgo(session.startedAt)}</p>
+              <li key={session.id} className="flex items-start gap-3 px-4 py-3 sm:px-6">
+                <SessionMiniPreview session={session} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <StatusDot status={session.status} />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-gray-900">
+                        {resolveSessionSummary(session) ?? `${session.id.slice(0, 8)}...`}
+                      </p>
+                      <p className="text-xs text-gray-400">{timeAgo(session.startedAt)} &middot; {session.stepCount} steps</p>
+                    </div>
                   </div>
+                  {resolveSessionNextAction(session) && (
+                    <p className="mt-1 max-h-10 overflow-hidden text-xs text-gray-500">
+                      Next: {resolveSessionNextAction(session)}
+                    </p>
+                  )}
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500">
-                    {session.stepCount} step{session.stepCount !== 1 ? 's' : ''}
-                  </span>
+                <div className="flex flex-col items-end gap-2">
                   <span
                     className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset ${
                       session.status === 'completed'
@@ -241,6 +243,26 @@ export function SessionAnalytics({ sessions, onViewAll }: SessionAnalyticsProps)
           </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+function SessionMiniPreview({ session }: { session: SessionListItem }) {
+  const thumbnail = resolveSessionThumbnail(session);
+
+  if (thumbnail) {
+    return (
+      <div className="h-12 w-12 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100 ring-1 ring-gray-200">
+        <img src={thumbnail} alt="Recent session preview" className="h-full w-full object-cover" loading="lazy" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-50 to-amber-100 ring-1 ring-orange-100">
+      <svg className="h-5 w-5 text-fixwise-orange" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+      </svg>
     </div>
   );
 }

@@ -27,6 +27,9 @@ struct FixWiseApp: App {
             .environmentObject(webSocketService)
             .task {
                 webSocketService.updateServerURL(backendConfiguration.backendWebSocketURL)
+                async let restored: Void = authStore.restoreSession(using: backendConfiguration)
+                async let health = backendConfiguration.refreshHealth()
+                _ = await (restored, health)
             }
         }
     }
@@ -34,12 +37,17 @@ struct FixWiseApp: App {
 
 private struct RootContentView: View {
     @Binding var hasCompletedOnboarding: Bool
+    @EnvironmentObject private var backendConfiguration: BackendConfigurationStore
+    @EnvironmentObject private var authStore: AuthStore
+    @EnvironmentObject private var webSocketService: WebSocketService
 
     var body: some View {
-        if hasCompletedOnboarding {
-            CameraSessionView()
-        } else {
-            OnboardingView()
+        Group {
+            if hasCompletedOnboarding {
+                CameraSessionView()
+            } else {
+                OnboardingView()
+            }
         }
     }
 }

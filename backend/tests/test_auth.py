@@ -60,6 +60,31 @@ class AuthTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn("access_token", resp.json())
 
+    def test_guest_auth_returns_token_envelope_and_guest_profile(self):
+        with self.client:
+            resp = self.client.post("/api/auth/guest")
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("access_token", data)
+        self.assertIn("refresh_token", data)
+        self.assertEqual(data["user"]["tier"], "guest")
+        self.assertTrue(data["user"]["id"].startswith("guest-"))
+        self.assertEqual(data["user"]["display_name"], "Guest")
+
+    def test_guest_cannot_save_api_key(self):
+        with self.client:
+            guest = self.client.post("/api/auth/guest")
+            token = guest.json()["access_token"]
+            resp = self.client.put(
+                "/api/settings/api-key",
+                json={"apiKey": "sk-test-api-key-value-1234567890"},
+                headers={"Authorization": f"Bearer {token}"},
+            )
+
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn("Guest sessions cannot save API keys", resp.json()["detail"])
+
     def test_login_with_wrong_password_returns_401(self):
         with self.client:
             self.client.post("/api/auth/register", json={

@@ -22,6 +22,15 @@ class MessageValidationTests(unittest.TestCase):
         )
 
         self.assertIsInstance(message, PromptMessage)
+        self.assertEqual(message.mode, "general")
+
+    def test_prompt_message_normalizes_mode(self):
+        message = validate_message_payload(
+            '{"type":"prompt","sessionId":"session-1","timestamp":123.45,"text":"What should I do next?","mode":"Car"}'
+        )
+
+        self.assertIsInstance(message, PromptMessage)
+        self.assertEqual(message.mode, "car")
 
     def test_end_session_message_validates(self):
         message = validate_message_payload(

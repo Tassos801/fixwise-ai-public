@@ -2,26 +2,24 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/api';
 import { useAuth } from '../services/auth';
-
-interface Session {
-  id: string;
-  status: string;
-  stepCount: number;
-  startedAt: string;
-  endedAt: string | null;
-  reportUrl: string | null;
-}
+import { SessionAnalytics } from '../components/SessionAnalytics';
+import {
+  resolveSessionNextAction,
+  resolveSessionSummary,
+  resolveSessionThumbnail,
+  type SessionListItem,
+} from '../types/sessions';
 
 export function DashboardPage() {
   const { user } = useAuth();
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessions, setSessions] = useState<SessionListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
   const fetchSessions = useCallback(async () => {
     try {
       const data = await api.get('/api/sessions');
-      setSessions(data.sessions);
+      setSessions(Array.isArray(data.sessions) ? data.sessions : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sessions');
     } finally {
@@ -62,8 +60,10 @@ export function DashboardPage() {
         />
       </div>
 
+      <SessionAnalytics sessions={sessions} onViewAll={() => document.getElementById('session-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} />
+
       {/* Sessions List */}
-      <div className="rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
+      <div id="session-history" className="rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
         <div className="border-b border-gray-200 px-4 py-4 sm:px-6">
           <h2 className="text-lg font-semibold text-gray-900">Session History</h2>
         </div>
@@ -87,17 +87,28 @@ export function DashboardPage() {
               <li key={session.id}>
                 <Link
                   to={`/sessions/${session.id}`}
-                  className="flex flex-col gap-3 px-4 py-4 transition-colors hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between sm:px-6"
+                  className="flex flex-col gap-4 px-4 py-4 transition-colors hover:bg-gray-50 sm:flex-row sm:items-start sm:justify-between sm:px-6"
                 >
-                  <div className="flex min-w-0 items-start gap-3 sm:items-center sm:gap-4">
-                    <StatusBadge status={session.status} />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-gray-900">
-                        Session {session.id.slice(0, 8)}
-                      </p>
-                      <p className="mt-0.5 text-xs text-gray-500">
-                        {formatDate(session.startedAt)} &middot; {session.stepCount} steps
-                      </p>
+                  <div className="flex min-w-0 flex-1 gap-3 sm:gap-4">
+                    <SessionThumbnail session={session} />
+                    <div className="min-w-0 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StatusBadge status={session.status} />
+                        <span className="text-xs text-gray-400">Session {session.id.slice(0, 8)}</span>
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-gray-900">
+                          {resolveSessionSummary(session) ?? 'Session summary will appear here once the backend provides it.'}
+                        </p>
+                        <p className="mt-0.5 text-xs text-gray-500">
+                          {formatDate(session.startedAt)} &middot; {session.stepCount} steps
+                        </p>
+                      </div>
+                      {resolveSessionNextAction(session) && (
+                        <p className="inline-flex max-w-full rounded-full bg-orange-50 px-2.5 py-1 text-xs font-medium text-fixwise-orange ring-1 ring-inset ring-orange-200">
+                          Next: {resolveSessionNextAction(session)}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center justify-between gap-3 sm:justify-end">
@@ -114,6 +125,26 @@ export function DashboardPage() {
           </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+function SessionThumbnail({ session }: { session: SessionListItem }) {
+  const thumbnail = resolveSessionThumbnail(session);
+
+  if (thumbnail) {
+    return (
+      <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-2xl bg-gray-100 ring-1 ring-gray-200 sm:h-20 sm:w-20">
+        <img src={thumbnail} alt="Session preview" className="h-full w-full object-cover" loading="lazy" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-50 to-amber-100 ring-1 ring-orange-100 sm:h-20 sm:w-20">
+      <svg className="h-6 w-6 text-fixwise-orange" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+      </svg>
     </div>
   );
 }

@@ -47,6 +47,24 @@ class ConfigTests(unittest.TestCase):
             "https://generativelanguage.googleapis.com/v1beta",
         )
 
+    def test_settings_from_env_supports_tts_settings(self):
+        with patch.dict(
+            os.environ,
+            {
+                "FIXWISE_TTS_ENABLED": "false",
+                "GEMINI_TTS_MODEL": "gemini-test-tts",
+                "GEMINI_TTS_VOICE": "Puck",
+                "FIXWISE_JWT_SECRET": "x" * 32,
+                "FIXWISE_MASTER_KEY": "ab" * 32,
+            },
+            clear=True,
+        ):
+            settings = Settings.from_env()
+
+        self.assertFalse(settings.tts_enabled)
+        self.assertEqual(settings.gemini_tts_model, "gemini-test-tts")
+        self.assertEqual(settings.gemini_tts_voice, "Puck")
+
 
 if __name__ == "__main__":
     unittest.main()

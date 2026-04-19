@@ -18,7 +18,7 @@ enum AppConfig {
         return nil
 #else
         if isLoopbackHost(backendHTTPURL) || isLoopbackHost(backendWebSocketURL) {
-            return "This build still points at localhost. Open Settings and replace the backend URL with a phone-reachable HTTPS endpoint before testing on a physical iPhone."
+            return "This build is using a localhost override. Open Settings > Advanced / Developer and replace it with a phone-reachable HTTPS endpoint before testing on a physical iPhone."
         }
         return nil
 #endif

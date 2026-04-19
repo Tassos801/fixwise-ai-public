@@ -17,6 +17,8 @@ VALID_AI_MODES = {"auto", "mock", "live"}
 VALID_AI_PROVIDERS = {"openai", "gemma"}
 DEFAULT_DATABASE_PATH = str(Path(__file__).resolve().parents[2] / "fixwise.db")
 DEFAULT_GEMMA_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+DEFAULT_GEMINI_TTS_MODEL = "gemini-3.1-flash-tts-preview"
+DEFAULT_GEMINI_TTS_VOICE = "Kore"
 DEV_JWT_SECRET = "dev-secret-change-in-production-local"
 MIN_JWT_SECRET_LENGTH = 32
 MIN_MASTER_KEY_BYTES = 32
@@ -35,6 +37,19 @@ def _int_env(name: str, default: int, minimum: int = 1) -> int:
     return max(minimum, parsed)
 
 
+def _bool_env(name: str, default: bool) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "FixWise AI"
@@ -48,6 +63,9 @@ class Settings:
     gemma_api_key: str | None = None
     gemma_model: str = "gemma-4-31b-it"
     gemma_base_url: str = DEFAULT_GEMMA_BASE_URL
+    tts_enabled: bool = True
+    gemini_tts_model: str = DEFAULT_GEMINI_TTS_MODEL
+    gemini_tts_voice: str = DEFAULT_GEMINI_TTS_VOICE
     environment: str = "development"
     database_path: str | None = None
     rate_limit_window_seconds: int = 60
@@ -74,6 +92,14 @@ class Settings:
         if self.ai_provider == "gemma":
             return (self.gemma_base_url or DEFAULT_GEMMA_BASE_URL).rstrip("/")
         return self.openai_base_url
+
+    @property
+    def tts_api_key(self) -> str | None:
+        return self.gemma_api_key
+
+    @property
+    def tts_base_url(self) -> str:
+        return (self.gemma_base_url or DEFAULT_GEMMA_BASE_URL).rstrip("/")
 
     def validate(self) -> None:
         """Validate security-critical settings.
@@ -177,6 +203,19 @@ class Settings:
             ).strip()
             .rstrip("/")
             or DEFAULT_GEMMA_BASE_URL,
+            tts_enabled=_bool_env("FIXWISE_TTS_ENABLED", True),
+            gemini_tts_model=(
+                os.getenv("GEMINI_TTS_MODEL")
+                or os.getenv("FIXWISE_GEMINI_TTS_MODEL")
+                or DEFAULT_GEMINI_TTS_MODEL
+            ).strip()
+            or DEFAULT_GEMINI_TTS_MODEL,
+            gemini_tts_voice=(
+                os.getenv("GEMINI_TTS_VOICE")
+                or os.getenv("FIXWISE_GEMINI_TTS_VOICE")
+                or DEFAULT_GEMINI_TTS_VOICE
+            ).strip()
+            or DEFAULT_GEMINI_TTS_VOICE,
             environment=os.getenv("FIXWISE_ENVIRONMENT", "development").strip()
             or "development",
             database_path=(

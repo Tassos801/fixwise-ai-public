@@ -12,6 +12,7 @@ final class AuthStore: ObservableObject {
         let email: String
         let displayName: String?
         let tier: String
+        let isGuest: Bool?
         let hasApiKey: Bool?
         let apiKeyMask: String?
         let apiKeyProvider: String?
@@ -22,6 +23,8 @@ final class AuthStore: ObservableObject {
             case displayNameSnake = "display_name"
             case displayNameCamel = "displayName"
             case tier
+            case isGuest = "is_guest"
+            case isGuestCamel = "isGuest"
             case hasApiKey
             case apiKeyMask
             case apiKeyProvider
@@ -32,6 +35,7 @@ final class AuthStore: ObservableObject {
             email: String,
             displayName: String?,
             tier: String,
+            isGuest: Bool?,
             hasApiKey: Bool?,
             apiKeyMask: String?,
             apiKeyProvider: String?
@@ -40,6 +44,7 @@ final class AuthStore: ObservableObject {
             self.email = email
             self.displayName = displayName
             self.tier = tier
+            self.isGuest = isGuest
             self.hasApiKey = hasApiKey
             self.apiKeyMask = apiKeyMask
             self.apiKeyProvider = apiKeyProvider
@@ -52,6 +57,8 @@ final class AuthStore: ObservableObject {
             displayName = try container.decodeIfPresent(String.self, forKey: .displayNameSnake)
                 ?? container.decodeIfPresent(String.self, forKey: .displayNameCamel)
             tier = try container.decode(String.self, forKey: .tier)
+            isGuest = try container.decodeIfPresent(Bool.self, forKey: .isGuest)
+                ?? container.decodeIfPresent(Bool.self, forKey: .isGuestCamel)
             hasApiKey = try container.decodeIfPresent(Bool.self, forKey: .hasApiKey)
             apiKeyMask = try container.decodeIfPresent(String.self, forKey: .apiKeyMask)
             apiKeyProvider = try container.decodeIfPresent(String.self, forKey: .apiKeyProvider)
@@ -71,16 +78,48 @@ final class AuthStore: ObservableObject {
     @Published private(set) var sessionTokens: SessionTokens?
     @Published private(set) var lastErrorMessage: String?
 
-    private let keychain = KeychainStore(service: "com.fixwise.ai.auth")
+    private let keychain: KeychainStore
+    private let urlSession: URLSession
     private let sessionAccount = "session"
     private var hasAttemptedRestore = false
+
+    init(
+        keychain: KeychainStore = KeychainStore(service: "com.fixwise.ai.auth"),
+        urlSession: URLSession = .shared
+    ) {
+        self.keychain = keychain
+        self.urlSession = urlSession
+    }
 
     var sessionToken: String? {
         sessionTokens?.accessToken
     }
 
+    /// Returns a token suitable for an immediate WebSocket connect, preferring the in-memory
+    /// session token but falling back to whatever is in the Keychain so callers don't have
+    /// to wait for `restoreSession` to finish its network round-trip.
+    func tokenForOptimisticConnect() -> String? {
+        if let token = sessionTokens?.accessToken {
+            return token
+        }
+        if let stored = try? keychain.load(SessionTokens.self, account: sessionAccount) {
+            sessionTokens = stored
+            return stored.accessToken
+        }
+        return nil
+    }
+
     var isAuthenticated: Bool {
         sessionTokens != nil && user != nil
+    }
+
+    var isGuestSession: Bool {
+        guard let user else { return false }
+        return user.isGuest == true || user.tier.lowercased() == "guest"
+    }
+
+    var canManageProviderKey: Bool {
+        isAuthenticated && !isGuestSession
     }
 
     func restoreSession(using backendConfiguration: BackendConfigurationStore) async {
@@ -90,7 +129,11 @@ final class AuthStore: ObservableObject {
 
         guard let storedTokens = try? keychain.load(SessionTokens.self, account: sessionAccount) else {
             clearTransientState()
-            status = .signedOut
+            if await bootstrapGuestSession(using: backendConfiguration) {
+                return
+            }
+
+            clearSession(message: lastErrorMessage ?? "FixWise could not create a guest session yet. Try again or sign in.")
             return
         }
 
@@ -115,7 +158,13 @@ final class AuthStore: ObservableObject {
             }
         }
 
-        clearSession(message: "Your session expired. Sign in again.")
+        clearTransientState()
+
+        if await bootstrapGuestSession(using: backendConfiguration) {
+            return
+        }
+
+        clearSession(message: lastErrorMessage ?? "FixWise could not create a guest session yet. Try again or sign in.")
     }
 
     func signIn(email: String, password: String, using backendConfiguration: BackendConfigurationStore) async -> Bool {
@@ -148,6 +197,45 @@ final class AuthStore: ObservableObject {
         )
     }
 
+    func bootstrapGuestSession(using backendConfiguration: BackendConfigurationStore) async -> Bool {
+        if isGuestSession {
+            status = .authenticated
+            lastErrorMessage = nil
+            return true
+        }
+
+        status = .authenticating
+        lastErrorMessage = nil
+
+        do {
+            var request = backendConfiguration.request(path: "/api/auth/guest", method: "POST")
+            request.httpBody = try JSONEncoder().encode(GuestBootstrapRequest())
+
+            let (data, response) = try await urlSession.data(for: request)
+            let httpResponse = try validateHTTPResponse(response, data: data)
+
+            guard (200...299).contains(httpResponse.statusCode) else {
+                throw backendError(from: data, statusCode: httpResponse.statusCode)
+            }
+
+            let authResponse = try JSONDecoder().decode(AuthResponse.self, from: data)
+            let tokens = SessionTokens(
+                accessToken: authResponse.accessToken,
+                refreshToken: authResponse.refreshToken
+            )
+            sessionTokens = tokens
+            user = authResponse.user
+            persist(tokens)
+            status = .authenticated
+            return true
+        } catch {
+            let message = error.localizedDescription
+            lastErrorMessage = message
+            status = .failed(message)
+            return false
+        }
+    }
+
     func refreshCurrentUser(using backendConfiguration: BackendConfigurationStore) async -> Bool {
         guard let accessToken = sessionTokens?.accessToken else { return false }
         guard let profile = await fetchCurrentUser(using: backendConfiguration, accessToken: accessToken) else {
@@ -166,6 +254,11 @@ final class AuthStore: ObservableObject {
             // Clearing local session should still continue even if Keychain removal fails.
         }
         clearSession(message: nil)
+    }
+
+    func signOutAndContinueAsGuest(using backendConfiguration: BackendConfigurationStore) async {
+        signOut()
+        _ = await bootstrapGuestSession(using: backendConfiguration)
     }
 
     func clearErrorMessage() {
@@ -187,7 +280,7 @@ final class AuthStore: ObservableObject {
             var request = backendConfiguration.request(path: path, method: "POST")
             request.httpBody = try JSONEncoder().encode(payload)
 
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await urlSession.data(for: request)
             let httpResponse = try validateHTTPResponse(response, data: data)
 
             guard (200...299).contains(httpResponse.statusCode) else {
@@ -218,7 +311,7 @@ final class AuthStore: ObservableObject {
     ) async -> UserProfile? {
         do {
             let request = backendConfiguration.request(path: "/api/auth/me", authToken: accessToken)
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await urlSession.data(for: request)
             let httpResponse = try validateHTTPResponse(response, data: data)
 
             guard (200...299).contains(httpResponse.statusCode) else {
@@ -239,7 +332,7 @@ final class AuthStore: ObservableObject {
             var request = backendConfiguration.request(path: "/api/auth/refresh", method: "POST")
             request.httpBody = try JSONEncoder().encode(RefreshCredentials(refreshToken: refreshToken))
 
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await urlSession.data(for: request)
             let httpResponse = try validateHTTPResponse(response, data: data)
 
             guard (200...299).contains(httpResponse.statusCode) else {
@@ -389,4 +482,6 @@ final class AuthStore: ObservableObject {
             case refreshToken = "refresh_token"
         }
     }
+
+    private struct GuestBootstrapRequest: Encodable {}
 }

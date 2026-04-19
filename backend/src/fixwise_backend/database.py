@@ -41,6 +41,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     user_id TEXT NOT NULL REFERENCES users(id),
     status TEXT NOT NULL DEFAULT 'active',
     step_count INTEGER NOT NULL DEFAULT 0,
+    selected_mode TEXT NOT NULL DEFAULT 'general',
+    summary TEXT,
+    last_next_action TEXT,
     started_at TEXT NOT NULL DEFAULT (datetime('now')),
     ended_at TEXT,
     report_url TEXT
@@ -54,6 +57,11 @@ CREATE TABLE IF NOT EXISTS session_steps (
     ai_response_text TEXT NOT NULL,
     annotations_json TEXT,
     safety_warning TEXT,
+    mode TEXT NOT NULL DEFAULT 'general',
+    next_action TEXT,
+    needs_closer_frame INTEGER,
+    follow_up_prompts_json TEXT,
+    confidence TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -88,9 +96,12 @@ class SessionRow:
     user_id: str
     status: str
     step_count: int
+    selected_mode: str
     started_at: str
     ended_at: str | None
     report_url: str | None
+    summary: str | None = None
+    last_next_action: str | None = None
 
 
 @dataclass
@@ -102,7 +113,12 @@ class SessionStepRow:
     ai_response_text: str
     annotations_json: str | None
     safety_warning: str | None
+    mode: str
     created_at: str
+    next_action: str | None = None
+    needs_closer_frame: int | None = None
+    follow_up_prompts_json: str | None = None
+    confidence: str | None = None
 
 
 class Database:
@@ -116,6 +132,14 @@ class Database:
         self._db = await aiosqlite.connect(self._db_path)
         self._db.row_factory = aiosqlite.Row
         await self._db.executescript(SCHEMA)
+        await self._ensure_column("sessions", "selected_mode", "TEXT NOT NULL DEFAULT 'general'")
+        await self._ensure_column("sessions", "summary", "TEXT")
+        await self._ensure_column("sessions", "last_next_action", "TEXT")
+        await self._ensure_column("session_steps", "mode", "TEXT NOT NULL DEFAULT 'general'")
+        await self._ensure_column("session_steps", "next_action", "TEXT")
+        await self._ensure_column("session_steps", "needs_closer_frame", "INTEGER")
+        await self._ensure_column("session_steps", "follow_up_prompts_json", "TEXT")
+        await self._ensure_column("session_steps", "confidence", "TEXT")
         await self._db.commit()
 
     async def close(self) -> None:
@@ -128,14 +152,27 @@ class Database:
         assert self._db is not None, "Database not connected. Call connect() first."
         return self._db
 
+    async def _ensure_column(self, table: str, column: str, ddl: str) -> None:
+        cursor = await self.db.execute(f"PRAGMA table_info({table})")
+        rows = await cursor.fetchall()
+        if any(row["name"] == column for row in rows):
+            return
+        await self.db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
     # ── Users ──────────────────────────────────────────────────
 
     async def create_user(
-        self, *, user_id: str, email: str, password_hash: str, display_name: str | None = None
+        self,
+        *,
+        user_id: str,
+        email: str,
+        password_hash: str,
+        display_name: str | None = None,
+        tier: str = "free",
     ) -> UserRow:
         await self.db.execute(
-            "INSERT INTO users (id, email, password_hash, display_name) VALUES (?, ?, ?, ?)",
-            (user_id, email, password_hash, display_name),
+            "INSERT INTO users (id, email, password_hash, display_name, tier) VALUES (?, ?, ?, ?, ?)",
+            (user_id, email, password_hash, display_name, tier),
         )
         await self.db.commit()
         return UserRow(
@@ -143,7 +180,7 @@ class Database:
             email=email,
             password_hash=password_hash,
             display_name=display_name,
-            tier="free",
+            tier=tier,
             created_at=datetime.now(UTC).isoformat(),
             updated_at=datetime.now(UTC).isoformat(),
         )
@@ -190,23 +227,51 @@ class Database:
 
     # ── Sessions ───────────────────────────────────────────────
 
-    async def create_session(self, *, session_id: str, user_id: str) -> SessionRow:
+    async def create_session(
+        self,
+        *,
+        session_id: str,
+        user_id: str,
+        selected_mode: str = "general",
+    ) -> SessionRow:
         now = datetime.now(UTC).isoformat()
         await self.db.execute(
-            "INSERT OR IGNORE INTO sessions (id, user_id, started_at) VALUES (?, ?, ?)",
-            (session_id, user_id, now),
+            "INSERT OR IGNORE INTO sessions (id, user_id, started_at, selected_mode) VALUES (?, ?, ?, ?)",
+            (session_id, user_id, now, selected_mode),
         )
         await self.db.commit()
         return SessionRow(
-            id=session_id, user_id=user_id, status="active",
-            step_count=0, started_at=now, ended_at=None, report_url=None,
+            id=session_id,
+            user_id=user_id,
+            status="active",
+            step_count=0,
+            selected_mode=selected_mode,
+            summary=None,
+            last_next_action=None,
+            started_at=now,
+            ended_at=None,
+            report_url=None,
         )
 
-    async def end_session(self, session_id: str, report_url: str | None = None) -> None:
+    async def update_session_mode(self, session_id: str, selected_mode: str) -> None:
+        await self.db.execute(
+            "UPDATE sessions SET selected_mode = ? WHERE id = ?",
+            (selected_mode, session_id),
+        )
+        await self.db.commit()
+
+    async def end_session(
+        self,
+        session_id: str,
+        report_url: str | None = None,
+        *,
+        summary: str | None = None,
+        last_next_action: str | None = None,
+    ) -> None:
         now = datetime.now(UTC).isoformat()
         await self.db.execute(
-            "UPDATE sessions SET status = 'completed', ended_at = ?, report_url = ? WHERE id = ?",
-            (now, report_url, session_id),
+            "UPDATE sessions SET status = 'completed', ended_at = ?, report_url = ?, summary = COALESCE(?, summary), last_next_action = COALESCE(?, last_next_action) WHERE id = ?",
+            (now, report_url, summary, last_next_action, session_id),
         )
         await self.db.commit()
 
@@ -248,12 +313,29 @@ class Database:
         frame_thumbnail: str | None = None,
         annotations_json: str | None = None,
         safety_warning: str | None = None,
+        mode: str = "general",
+        next_action: str | None = None,
+        needs_closer_frame: bool | None = None,
+        follow_up_prompts_json: str | None = None,
+        confidence: str | None = None,
     ) -> None:
         await self.db.execute(
             """INSERT INTO session_steps
-               (session_id, step_number, frame_thumbnail, ai_response_text, annotations_json, safety_warning)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (session_id, step_number, frame_thumbnail, ai_response_text, annotations_json, safety_warning),
+               (session_id, step_number, frame_thumbnail, ai_response_text, annotations_json, safety_warning, mode, next_action, needs_closer_frame, follow_up_prompts_json, confidence)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                session_id,
+                step_number,
+                frame_thumbnail,
+                ai_response_text,
+                annotations_json,
+                safety_warning,
+                mode,
+                next_action,
+                int(needs_closer_frame) if needs_closer_frame is not None else None,
+                follow_up_prompts_json,
+                confidence,
+            ),
         )
         await self.db.commit()
 

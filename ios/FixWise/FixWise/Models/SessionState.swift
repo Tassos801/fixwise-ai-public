@@ -1,5 +1,155 @@
 import Foundation
 
+enum GuidanceMode: String, CaseIterable, Codable, Equatable, Hashable, Identifiable {
+    case general
+    case homeRepair = "home_repair"
+    case gardening
+    case gym
+    case cooking
+    case car
+    case machines
+
+    static let storageKey = "selectedGuidanceMode"
+
+    var id: String { rawValue }
+
+    static func resolved(rawValue: String?) -> GuidanceMode {
+        guard let rawValue else { return .general }
+        return GuidanceMode(rawValue: rawValue) ?? .general
+    }
+
+    static func storedSelection(in userDefaults: UserDefaults = .standard) -> GuidanceMode {
+        resolved(rawValue: userDefaults.string(forKey: storageKey))
+    }
+
+    var title: String {
+        switch self {
+        case .general:
+            return "General"
+        case .homeRepair:
+            return "Home Repair"
+        case .gardening:
+            return "Gardening & Plants"
+        case .gym:
+            return "Gym"
+        case .cooking:
+            return "Cooking"
+        case .car:
+            return "Car"
+        case .machines:
+            return "Machines & Tech"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .general:
+            return "sparkles"
+        case .homeRepair:
+            return "wrench.and.screwdriver"
+        case .gardening:
+            return "leaf"
+        case .gym:
+            return "dumbbell"
+        case .cooking:
+            return "fork.knife"
+        case .car:
+            return "car.fill"
+        case .machines:
+            return "cpu"
+        }
+    }
+
+    var readinessHint: String {
+        switch self {
+        case .general:
+            return "Ask naturally about what you see, what to do next, or what looks unsafe."
+        case .homeRepair:
+            return "Ask about fixtures, leaks, fasteners, outlets, or the next repair step."
+        case .gardening:
+            return "Ask about plant health, watering, pruning, soil, or pests."
+        case .gym:
+            return "Ask about form, setup, range of motion, tempo, or injury risk."
+        case .cooking:
+            return "Ask about ingredients, doneness, timing, plating, or food safety."
+        case .car:
+            return "Ask about fluids, batteries, brakes, tires, or the next diagnostic step."
+        case .machines:
+            return "Ask about connectors, ports, panels, appliances, or tech setup."
+        }
+    }
+
+    var typedPromptPlaceholder: String {
+        switch self {
+        case .general:
+            return "What should I do next?"
+        case .homeRepair:
+            return "Which valve or fastener should I check next?"
+        case .gardening:
+            return "What do these leaves need?"
+        case .gym:
+            return "How does my setup or form look?"
+        case .cooking:
+            return "Is this cooked enough yet?"
+        case .car:
+            return "What should I inspect under the hood next?"
+        case .machines:
+            return "Which connector or panel should I focus on?"
+        }
+    }
+
+    var promptExamples: [String] {
+        switch self {
+        case .general:
+            return [
+                "What am I looking at?",
+                "What should I do next?",
+                "Is anything unsafe here?"
+            ]
+        case .homeRepair:
+            return [
+                "Which shutoff or fastener matters here?",
+                "Is this leak point or fitting the problem?",
+                "What should I loosen or tighten next?"
+            ]
+        case .gardening:
+            return [
+                "Does this plant look overwatered?",
+                "What should I prune first?",
+                "Do you see pests or disease here?"
+            ]
+        case .gym:
+            return [
+                "How does my setup look?",
+                "What should I correct before the next rep?",
+                "Do you see any injury risk here?"
+            ]
+        case .cooking:
+            return [
+                "Is this ready to flip or plate?",
+                "What should I cut or season next?",
+                "Do you see any food safety issue here?"
+            ]
+        case .car:
+            return [
+                "What fluid or component is this?",
+                "What should I inspect next under the hood?",
+                "Does anything here look unsafe to touch?"
+            ]
+        case .machines:
+            return [
+                "What connector or part is this?",
+                "What should I unplug or reseat next?",
+                "Do you see any issue with this machine setup?"
+            ]
+        }
+    }
+
+    var suggestionTitle: String {
+        "Looks like \(title)"
+    }
+}
+
 /// State machine for a FixWise guidance session.
 enum SessionPhase: Equatable {
     case idle
@@ -21,6 +171,23 @@ enum SessionOverlay: Equatable {
     case error(String)
 }
 
+enum GuidanceConfidence: String, Codable, Equatable {
+    case low
+    case medium
+    case high
+}
+
+struct ConversationTurn: Identifiable, Equatable {
+    enum Role: String, Codable, Equatable {
+        case user
+        case assistant
+    }
+
+    let id = UUID()
+    let role: Role
+    let text: String
+}
+
 /// Manages session lifecycle and metadata.
 @MainActor
 final class SessionState: ObservableObject {
@@ -32,6 +199,12 @@ final class SessionState: ObservableObject {
     @Published var annotations: [Annotation] = []
     @Published var lastGuidanceText: String = ""
     @Published var overlay: SessionOverlay?
+    @Published private(set) var conversationTurns: [ConversationTurn] = []
+    @Published private(set) var followUpPrompts: [String] = []
+    @Published private(set) var sessionSummary: String = ""
+    @Published private(set) var lastNextAction: String?
+    @Published private(set) var guidanceConfidence: GuidanceConfidence = .medium
+    @Published private(set) var needsCloserFrame = false
 
     private var startTime: Date?
     private var timer: Timer?
@@ -44,6 +217,12 @@ final class SessionState: ObservableObject {
         annotations = []
         lastGuidanceText = ""
         overlay = nil
+        conversationTurns = []
+        followUpPrompts = []
+        sessionSummary = ""
+        lastNextAction = nil
+        guidanceConfidence = .medium
+        needsCloserFrame = false
         return id
     }
 
@@ -62,12 +241,44 @@ final class SessionState: ObservableObject {
 
     func didStartProcessing() {
         overlay = nil
+        needsCloserFrame = false
         phase = .active(subState: .processing)
     }
 
-    func didReceiveResponse(newAnnotations: [Annotation], text: String) {
+    func recordUserTurn(_ text: String) {
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty else { return }
+
+        conversationTurns.append(.init(role: .user, text: normalized))
+        trimConversationHistory()
+        currentStep = max(currentStep, conversationTurns.count)
+    }
+
+    func didReceiveResponse(
+        newAnnotations: [Annotation],
+        text: String,
+        nextAction: String? = nil,
+        needsCloserFrame: Bool = false,
+        followUpPrompts: [String] = [],
+        confidence: GuidanceConfidence = .medium,
+        summary: String? = nil
+    ) {
         annotations = newAnnotations
         lastGuidanceText = text
+        lastNextAction = nextAction?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty
+        self.needsCloserFrame = needsCloserFrame
+        self.followUpPrompts = followUpPrompts
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guidanceConfidence = confidence
+        if let summary = summary?.trimmingCharacters(in: .whitespacesAndNewlines).nonEmpty {
+            sessionSummary = summary
+        } else if sessionSummary.isEmpty {
+            sessionSummary = text
+        }
+        conversationTurns.append(.init(role: .assistant, text: text))
+        trimConversationHistory()
+        currentStep = max(currentStep, conversationTurns.count)
         overlay = nil
         phase = .active(subState: .responding)
 
@@ -100,6 +311,12 @@ final class SessionState: ObservableObject {
         annotations = []
         lastGuidanceText = ""
         overlay = nil
+        conversationTurns = []
+        followUpPrompts = []
+        sessionSummary = ""
+        lastNextAction = nil
+        guidanceConfidence = .medium
+        needsCloserFrame = false
         startTime = nil
         stopTimer()
     }
@@ -133,6 +350,58 @@ final class SessionState: ObservableObject {
         }
     }
 
+    var visibleFollowUpPrompts: [String] {
+        if !followUpPrompts.isEmpty {
+            return followUpPrompts
+        }
+
+        if needsCloserFrame {
+            return [
+                "Move closer to the task",
+                "Center the detail in the frame",
+                "What should I zoom in on next?"
+            ]
+        }
+
+        if let lastNextAction, !lastNextAction.isEmpty {
+            return [
+                lastNextAction,
+                "Show me the next small step",
+                "Is anything unsafe here?"
+            ]
+        }
+
+        if conversationTurns.isEmpty {
+            return [
+                "What am I looking at?",
+                "What should I do next?",
+                "Is anything unsafe?"
+            ]
+        }
+
+        return [
+            "What should I do next?",
+            "Give me a closer look",
+            "Is anything unsafe?"
+        ]
+    }
+
+    var recapSummaryText: String {
+        let trimmedSummary = sessionSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedSummary.isEmpty {
+            return trimmedSummary
+        }
+        if !lastGuidanceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return lastGuidanceText
+        }
+        return "FixWise wrapped up the session and is ready for another live walkthrough."
+    }
+
+    var recapNextActionText: String? {
+        let trimmed = lastNextAction?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
+
     // MARK: - Timer
 
     private func startTimer() {
@@ -147,5 +416,17 @@ final class SessionState: ObservableObject {
     private func stopTimer() {
         timer?.invalidate()
         timer = nil
+    }
+
+    private func trimConversationHistory(limit: Int = 8) {
+        guard conversationTurns.count > limit else { return }
+        conversationTurns = Array(conversationTurns.suffix(limit))
+    }
+}
+
+private extension String {
+    var nonEmpty: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }

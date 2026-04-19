@@ -68,6 +68,14 @@ class UserInfo(BaseModel):
     email: str
     display_name: str | None
     tier: str
+    is_guest: bool = False
+
+
+class GuestIdentity(BaseModel):
+    id: str
+    email: str
+    display_name: str | None = "Guest"
+    tier: str = "guest"
 
 
 class RefreshRequest(BaseModel):
@@ -95,24 +103,26 @@ def verify_password(password: str, stored_hash: str) -> bool:
 
 # ── JWT Token Operations ──────────────────────────────────
 
-def create_access_token(user_id: str, email: str) -> str:
+def create_access_token(user_id: str, email: str, *, kind: str = "account") -> str:
     expire = datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
         "sub": user_id,
         "email": email,
         "exp": expire,
         "type": "access",
+        "kind": kind,
     }
     return jwt.encode(payload, _get_jwt_secret(), algorithm=JWT_ALGORITHM)
 
 
-def create_refresh_token(user_id: str) -> str:
+def create_refresh_token(user_id: str, *, kind: str = "account") -> str:
     expire = datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     payload = {
         "sub": user_id,
         "exp": expire,
         "type": "refresh",
         "jti": secrets.token_hex(16),
+        "kind": kind,
     }
     return jwt.encode(payload, _get_jwt_secret(), algorithm=JWT_ALGORITHM)
 
@@ -180,6 +190,7 @@ async def register_user(req: RegisterRequest, db: Database) -> AuthResponse:
         email=req.email,
         password_hash=password_hash,
         display_name=req.display_name,
+        tier="free",
     )
 
     access_token = create_access_token(user.id, user.email)
@@ -189,12 +200,7 @@ async def register_user(req: RegisterRequest, db: Database) -> AuthResponse:
         access_token=access_token,
         refresh_token=refresh_token,
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        user=UserInfo(
-            id=user.id,
-            email=user.email,
-            display_name=user.display_name,
-            tier=user.tier,
-        ),
+        user=_user_info(user.id, user.email, user.display_name, user.tier),
     )
 
 
@@ -211,12 +217,7 @@ async def login_user(req: LoginRequest, db: Database) -> AuthResponse:
         access_token=access_token,
         refresh_token=refresh_token,
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        user=UserInfo(
-            id=user.id,
-            email=user.email,
-            display_name=user.display_name,
-            tier=user.tier,
-        ),
+        user=_user_info(user.id, user.email, user.display_name, user.tier),
     )
 
 
@@ -231,17 +232,45 @@ async def refresh_tokens(req: RefreshRequest, db: Database) -> AuthResponse:
     if not user:
         raise HTTPException(status_code=401, detail="User not found.")
 
-    access_token = create_access_token(user.id, user.email)
-    refresh_token = create_refresh_token(user.id)
+    token_kind = payload.get("kind", "account")
+    access_token = create_access_token(user.id, user.email, kind=token_kind)
+    refresh_token = create_refresh_token(user.id, kind=token_kind)
 
     return AuthResponse(
         access_token=access_token,
         refresh_token=refresh_token,
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        user=UserInfo(
-            id=user.id,
-            email=user.email,
-            display_name=user.display_name,
-            tier=user.tier,
-        ),
+        user=_user_info(user.id, user.email, user.display_name, user.tier),
+    )
+
+
+async def create_guest_user(db: Database) -> AuthResponse:
+    """Create and persist a guest identity for anonymous beta sessions."""
+    guest_id = f"guest-{uuid4()}"
+    guest_email = f"{guest_id}@fixwise.local"
+    password_hash = hash_password(secrets.token_urlsafe(24))
+    user = await db.create_user(
+        user_id=guest_id,
+        email=guest_email,
+        password_hash=password_hash,
+        display_name="Guest",
+        tier="guest",
+    )
+    access_token = create_access_token(user.id, user.email, kind="guest")
+    refresh_token = create_refresh_token(user.id, kind="guest")
+    return AuthResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        user=_user_info(user.id, user.email, user.display_name, user.tier),
+    )
+
+
+def _user_info(user_id: str, email: str, display_name: str | None, tier: str) -> UserInfo:
+    return UserInfo(
+        id=user_id,
+        email=email,
+        display_name=display_name,
+        tier=tier,
+        is_guest=tier == "guest" or user_id.startswith("guest-"),
     )

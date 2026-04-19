@@ -1,28 +1,18 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api } from '../services/api';
-
-interface SessionStep {
-  stepNumber: number;
-  text: string;
-  safetyWarning: string | null;
-  hasFrame: boolean;
-  createdAt: string;
-}
-
-interface SessionDetail {
-  id: string;
-  status: string;
-  stepCount: number;
-  startedAt: string;
-  endedAt: string | null;
-  reportUrl: string | null;
-  steps: SessionStep[];
-}
+import {
+  formatConfidenceLabel,
+  resolveSessionNextAction,
+  resolveSessionSummary,
+  resolveStepThumbnail,
+  type SessionStepItem,
+  type SessionDetailItem,
+} from '../types/sessions';
 
 export function SessionDetailPage() {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const [session, setSession] = useState<SessionDetail | null>(null);
+  const [session, setSession] = useState<SessionDetailItem | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [isDownloading, setIsDownloading] = useState(false);
@@ -64,6 +54,17 @@ export function SessionDetailPage() {
     fetchSession();
   }, [fetchSession]);
 
+  const stepThumbnails = useMemo(
+    () =>
+      session?.steps
+        .map((step) => {
+          const thumbnail = resolveStepThumbnail(step);
+          return thumbnail ? { step, thumbnail } : null;
+        })
+        .filter((entry): entry is { step: SessionStepItem; thumbnail: string } => entry !== null) ?? [],
+    [session],
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -82,6 +83,10 @@ export function SessionDetailPage() {
       </div>
     );
   }
+
+  const sessionSummary = resolveSessionSummary(session);
+  const sessionNextAction = resolveSessionNextAction(session);
+  const confidenceLabel = formatConfidenceLabel(session.confidence);
 
   return (
     <div>
@@ -119,6 +124,50 @@ export function SessionDetailPage() {
         )}
       </div>
 
+      <div className="mb-8 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <InfoCard
+          label="Session summary"
+          value={sessionSummary ?? 'A summary will appear here when the backend provides one.'}
+          hint="What the assistant understands about this session"
+        />
+        <InfoCard
+          label="Next action"
+          value={sessionNextAction ?? 'A next step will be suggested when available.'}
+          hint="Use this to keep the flow moving"
+        />
+        <InfoCard
+          label="Confidence"
+          value={confidenceLabel ?? 'Not reported yet'}
+          hint="Backend confidence for the latest guidance"
+        />
+      </div>
+
+      <section className="mb-8 rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
+        <div className="border-b border-gray-200 px-4 py-4 sm:px-6">
+          <h2 className="text-lg font-semibold text-gray-900">Frame previews</h2>
+        </div>
+        <div className="px-4 py-4 sm:px-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {stepThumbnails.length > 0 ? (
+              stepThumbnails.map(({ step, thumbnail }) => (
+                <div key={step.stepNumber} className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-50">
+                  <div className="aspect-square bg-gray-100">
+                    <img src={thumbnail} alt={`Step ${step.stepNumber} frame preview`} className="h-full w-full object-cover" loading="lazy" />
+                  </div>
+                  <div className="px-3 py-2 text-xs text-gray-500">
+                    Step {step.stepNumber}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="col-span-full rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
+                Frame previews will appear here if the backend includes thumbnail fields.
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
       {/* Steps Timeline */}
       <div className="rounded-xl bg-white shadow-sm ring-1 ring-gray-200">
         <div className="border-b border-gray-200 px-4 py-4 sm:px-6">
@@ -140,7 +189,23 @@ export function SessionDetailPage() {
                   </div>
 
                   <div className="flex-1">
-                    <p className="text-sm text-gray-900 leading-relaxed">{step.text}</p>
+                    <p className="text-sm leading-relaxed text-gray-900">{step.text}</p>
+
+                    {step.nextAction && (
+                      <div className="mt-2 rounded-lg bg-orange-50 px-3 py-2 text-xs text-fixwise-orange ring-1 ring-inset ring-orange-200">
+                        Next step: {step.nextAction}
+                      </div>
+                    )}
+
+                    {step.followUpPrompts && step.followUpPrompts.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {step.followUpPrompts.slice(0, 3).map((prompt) => (
+                          <span key={prompt} className="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-600 ring-1 ring-inset ring-gray-200">
+                            {prompt}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
                     {step.safetyWarning && (
                       <div className="mt-2 rounded-lg bg-yellow-50 px-3 py-2 text-xs text-yellow-800 ring-1 ring-inset ring-yellow-200">
@@ -164,6 +229,16 @@ export function SessionDetailPage() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function InfoCard({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
+      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="mt-2 text-sm font-medium text-gray-900">{value}</p>
+      <p className="mt-1 text-xs text-gray-400">{hint}</p>
     </div>
   );
 }

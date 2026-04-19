@@ -8,16 +8,22 @@ services:
     startCommand: cd backend && uvicorn fixwise_backend.app:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
+      - key: FIXWISE_AI_MODE
+        value: live
       - key: FIXWISE_AI_PROVIDER
         value: gemma
       - key: FIXWISE_ENVIRONMENT
         value: production
       - key: FIXWISE_DATABASE_PATH
         value: /opt/render/project/src/backend/fixwise.db
-      - key: OPENAI_MODEL
-        value: gpt-4o-mini
       - key: GEMMA_MODEL
-        value: gemini-2.5-flash
+        value: gemma-4-31b-it
+      - key: FIXWISE_TTS_ENABLED
+        value: true
+      - key: GEMINI_TTS_MODEL
+        value: gemini-3.1-flash-tts-preview
+      - key: GEMINI_TTS_VOICE
+        value: Kore
       - key: FIXWISE_ALLOWED_ORIGINS
         sync: false
       - key: FIXWISE_JWT_SECRET

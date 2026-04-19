@@ -75,8 +75,11 @@ class DatabaseTests(unittest.TestCase):
             await self.db.create_user(
                 user_id="u4", email="sess@example.com", password_hash="h",
             )
-            session = await self.db.create_session(session_id="s1", user_id="u4")
+            session = await self.db.create_session(session_id="s1", user_id="u4", selected_mode="car")
             self.assertEqual(session.status, "active")
+            self.assertEqual(session.selected_mode, "car")
+            self.assertIsNone(session.summary)
+            self.assertIsNone(session.last_next_action)
 
             step_count = await self.db.increment_step_count("s1")
             self.assertEqual(step_count, 1)
@@ -84,15 +87,31 @@ class DatabaseTests(unittest.TestCase):
             await self.db.add_session_step(
                 session_id="s1", step_number=1,
                 ai_response_text="Turn the valve counterclockwise.",
+                mode="car",
+                next_action="Turn the valve counterclockwise.",
+                needs_closer_frame=False,
+                follow_up_prompts_json='["Should I keep turning it?"]',
+                confidence="high",
             )
 
             steps = await self.db.get_session_steps("s1")
             self.assertEqual(len(steps), 1)
             self.assertEqual(steps[0].ai_response_text, "Turn the valve counterclockwise.")
+            self.assertEqual(steps[0].mode, "car")
+            self.assertEqual(steps[0].next_action, "Turn the valve counterclockwise.")
+            self.assertEqual(steps[0].confidence, "high")
 
-            await self.db.end_session("s1")
+            await self.db.update_session_mode("s1", "machines")
+            await self.db.end_session(
+                "s1",
+                summary="Turn the valve",
+                last_next_action="Turn the valve counterclockwise.",
+            )
             ended = await self.db.get_session("s1")
             self.assertEqual(ended.status, "completed")
+            self.assertEqual(ended.selected_mode, "machines")
+            self.assertEqual(ended.summary, "Turn the valve")
+            self.assertEqual(ended.last_next_action, "Turn the valve counterclockwise.")
 
         run_async(_test())
 

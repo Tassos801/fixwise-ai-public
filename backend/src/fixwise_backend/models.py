@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field, TypeAdapter, field_validator
+
+from .guidance_modes import DEFAULT_GUIDANCE_MODE, normalize_guidance_mode
 
 
 class APIKeyRequest(BaseModel):
@@ -28,6 +30,14 @@ class PromptMessage(BaseModel):
     sessionId: str = Field(min_length=1)
     timestamp: float
     text: str = Field(min_length=1)
+    mode: str = DEFAULT_GUIDANCE_MODE
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def validate_mode(cls, value: object) -> str:
+        if not isinstance(value, str):
+            return DEFAULT_GUIDANCE_MODE
+        return normalize_guidance_mode(value)
 
 
 class EndSessionMessage(BaseModel):
@@ -57,6 +67,10 @@ class AIResponse(BaseModel):
     text: str = Field(min_length=1)
     annotations: list[AnnotationData] = Field(default_factory=list)
     safetyWarning: str | None = None
+    nextAction: str | None = None
+    needsCloserFrame: bool = False
+    followUpPrompts: list[str] = Field(default_factory=list)
+    confidence: Literal["low", "medium", "high"] = "medium"
 
 
 class ResponseMessage(BaseModel):
@@ -67,6 +81,30 @@ class ResponseMessage(BaseModel):
     annotations: list[AnnotationData] = Field(default_factory=list)
     stepNumber: int
     safetyWarning: str | None = None
+    nextAction: str | None = None
+    needsCloserFrame: bool = False
+    followUpPrompts: list[str] = Field(default_factory=list)
+    confidence: Literal["low", "medium", "high"] = "medium"
+    mode: str = DEFAULT_GUIDANCE_MODE
+    suggestedMode: str | None = None
+    summary: str | None = None
+
+    @field_validator("mode", mode="before")
+    @classmethod
+    def validate_response_mode(cls, value: object) -> str:
+        if not isinstance(value, str):
+            return DEFAULT_GUIDANCE_MODE
+        return normalize_guidance_mode(value)
+
+    @field_validator("suggestedMode", mode="before")
+    @classmethod
+    def validate_suggested_mode(cls, value: object) -> str | None:
+        if not isinstance(value, str):
+            return None
+        normalized = normalize_guidance_mode(value)
+        if normalized == DEFAULT_GUIDANCE_MODE:
+            return None
+        return normalized
 
 
 class SafetyBlockMessage(BaseModel):

@@ -7,7 +7,6 @@ import { RegisterPage } from './pages/RegisterPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { SessionDetailPage } from './pages/SessionDetailPage';
 import { SettingsPage } from './pages/SettingsPage';
-import { SubscriptionPage } from './pages/SubscriptionPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -41,7 +40,7 @@ export function App() {
           <Route index element={<DashboardPage />} />
           <Route path="sessions/:sessionId" element={<SessionDetailPage />} />
           <Route path="settings" element={<SettingsPage />} />
-          <Route path="subscription" element={<SubscriptionPage />} />
+          <Route path="subscription" element={<Navigate to="/settings" replace />} />
         </Route>
       </Routes>
     </ErrorBoundary>

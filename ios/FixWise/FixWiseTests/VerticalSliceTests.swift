@@ -352,6 +352,32 @@ final class VerticalSliceTests: XCTestCase {
         XCTAssertEqual(state.taskState?.totalChecklistCount, 1)
     }
 
+    func testTaskStateTitlesCoverNonTechModes() {
+        let cooking = GuidanceTaskState(
+            setupType: "cooking_task",
+            phase: "act",
+            title: "Cook the chicken",
+            checklist: [],
+            visibleComponents: [],
+            troubleshootingFocus: "doneness"
+        )
+        let gardening = GuidanceTaskState(
+            setupType: "plant_care",
+            phase: "inspect",
+            title: "Check plant health",
+            checklist: [],
+            visibleComponents: [],
+            troubleshootingFocus: "plant_health"
+        )
+
+        XCTAssertEqual(cooking.setupTypeTitle, "Cooking")
+        XCTAssertEqual(cooking.phaseTitle, "Act")
+        XCTAssertEqual(cooking.troubleshootingTitle, "Doneness")
+        XCTAssertEqual(gardening.setupTypeTitle, "Plant care")
+        XCTAssertEqual(gardening.phaseTitle, "Inspect")
+        XCTAssertEqual(gardening.troubleshootingTitle, "Plant health")
+    }
+
     @MainActor
     func testSessionStateProvidesCloseFrameFollowUpsWhenNeeded() {
         let state = SessionState()

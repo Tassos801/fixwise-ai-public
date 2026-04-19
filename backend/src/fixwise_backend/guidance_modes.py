@@ -46,20 +46,20 @@ _JSON_FORMAT = """Return valid JSON with this shape:
 }
 """
 
-_PC_SETUP_TASK_STATE = """For PC/device setup in Machines & Tech mode, include taskState when relevant:
+_TASK_STATE_GUIDANCE = """Include taskState when the user is working through a visible task:
 {
-  "setupType": "pc_build|display_setup|network_setup|peripheral_setup|unknown",
-  "phase": "identify|connect|verify|troubleshoot|complete",
+  "setupType": "general_task|home_repair|plant_care|exercise_form|cooking_task|car_maintenance|machine_setup|pc_build|display_setup|network_setup|peripheral_setup|unknown",
+  "phase": "identify|inspect|prepare|connect|act|adjust|verify|troubleshoot|complete",
   "title": "short task title",
   "checklist": [
     { "id": "stable-id", "title": "short step", "status": "pending|active|done|blocked" }
   ],
   "visibleComponents": [
-    { "label": "HDMI cable", "kind": "port|cable|component|slot|header|device|unknown", "confidence": "low|medium|high", "x": 0.5, "y": 0.5 }
+    { "label": "visible item", "kind": "part|tool|fixture|plant|soil|food|equipment|vehicle_part|port|cable|component|unknown", "confidence": "low|medium|high", "x": 0.5, "y": 0.5 }
   ],
-  "troubleshootingFocus": "no_display|no_power|not_detected|network_issue|null"
+  "troubleshootingFocus": "short_focus_or_null"
 }
-Keep the checklist short and mark exactly one item active unless the task is complete.
+Choose setupType for the active mode. Keep the checklist short and mark exactly one item active unless the task is complete.
 """
 
 
@@ -74,7 +74,7 @@ GUIDANCE_MODES: dict[str, GuidanceModeDefinition] = {
             "and anything the user points their camera at.\n"
             "If relevant, mention safety tips briefly but always provide the answer or the clearest next action first.\n"
             "When unsure, describe what you see and suggest the most likely next step.\n\n"
-            + _SHARED_PREAMBLE + "\n" + _JSON_FORMAT
+            + _SHARED_PREAMBLE + "\n" + _TASK_STATE_GUIDANCE + "\n" + _JSON_FORMAT
         ),
     ),
     "home_repair": GuidanceModeDefinition(
@@ -85,7 +85,7 @@ GUIDANCE_MODES: dict[str, GuidanceModeDefinition] = {
             "Identify parts, fasteners, and connections visible in the frame and name them clearly.\n"
             "Guide the user through plumbing, electrical, drywall, furniture assembly, and general household fixes one small step at a time.\n"
             "Warn briefly about electrical or structural hazards before the user touches anything.\n\n"
-            + _SHARED_PREAMBLE + "\n" + _JSON_FORMAT
+            + _SHARED_PREAMBLE + "\n" + _TASK_STATE_GUIDANCE + "\n" + _JSON_FORMAT
         ),
         keywords=(
             "door",
@@ -119,7 +119,7 @@ GUIDANCE_MODES: dict[str, GuidanceModeDefinition] = {
             "Identify plants, soil conditions, and pest damage visible in the frame.\n"
             "Advise on pruning technique, watering schedules, and soil amendments based on what you see.\n"
             "Flag any signs of disease or pest infestation early so the user can act quickly.\n\n"
-            + _SHARED_PREAMBLE + "\n" + _JSON_FORMAT
+            + _SHARED_PREAMBLE + "\n" + _TASK_STATE_GUIDANCE + "\n" + _JSON_FORMAT
         ),
         keywords=("leaf", "garden", "watering", "pruning", "pest", "soil", "pot"),
         strong_keywords=("plant", "flower", "weed", "mulch", "compost", "stem"),
@@ -132,7 +132,7 @@ GUIDANCE_MODES: dict[str, GuidanceModeDefinition] = {
             "Observe the user's form, posture, and equipment setup and call out corrections immediately.\n"
             "Suggest rep tempo, range of motion, and breathing cues to improve safety and effectiveness.\n"
             "Warn about injury risks such as rounded backs, locked knees, or excessive weight.\n\n"
-            + _SHARED_PREAMBLE + "\n" + _JSON_FORMAT
+            + _SHARED_PREAMBLE + "\n" + _TASK_STATE_GUIDANCE + "\n" + _JSON_FORMAT
         ),
         keywords=("posture", "form", "exercise", "workout", "tempo", "range of motion", "rep"),
         strong_keywords=("squat", "deadlift", "bench", "dumbbell", "barbell", "kettlebell"),
@@ -145,7 +145,7 @@ GUIDANCE_MODES: dict[str, GuidanceModeDefinition] = {
             "Identify ingredients, doneness levels, and plating opportunities visible in the frame.\n"
             "Suggest techniques (for example julienne, sear, or fold) and timing adjustments based on what you see.\n"
             "Warn about food safety issues such as raw meat cross-contamination or unsafe temperatures.\n\n"
-            + _SHARED_PREAMBLE + "\n" + _JSON_FORMAT
+            + _SHARED_PREAMBLE + "\n" + _TASK_STATE_GUIDANCE + "\n" + _JSON_FORMAT
         ),
         keywords=("ingredient", "kitchen", "recipe", "seasoning", "boil", "simmer", "sauce"),
         strong_keywords=("cook", "cooking", "pan", "oven", "stove", "knife", "chicken", "steak"),
@@ -158,7 +158,7 @@ GUIDANCE_MODES: dict[str, GuidanceModeDefinition] = {
             "Identify engine components, fluid reservoirs, tires, and connectors visible in the frame.\n"
             "Guide the user through fluid checks, tire changes, battery jumps, and basic diagnostics step by step.\n"
             "Warn about hot surfaces, moving belts, and high-voltage hybrid components before the user reaches in.\n\n"
-            + _SHARED_PREAMBLE + "\n" + _JSON_FORMAT
+            + _SHARED_PREAMBLE + "\n" + _TASK_STATE_GUIDANCE + "\n" + _JSON_FORMAT
         ),
         keywords=("hood", "engine", "coolant", "reservoir", "fluid", "dashboard", "diagnostic"),
         strong_keywords=("car", "battery", "brake", "oil", "tire", "spark plug", "radiator"),
@@ -171,7 +171,7 @@ GUIDANCE_MODES: dict[str, GuidanceModeDefinition] = {
             "Identify ports, connectors, circuit boards, and mechanical parts visible in the frame.\n"
             "Guide the user through appliance troubleshooting, PC building, printer jams, and power tool setup.\n"
             "Warn about static discharge, capacitor hazards, and pinch points before the user opens a panel.\n\n"
-            + _SHARED_PREAMBLE + "\n" + _PC_SETUP_TASK_STATE + "\n" + _JSON_FORMAT
+            + _SHARED_PREAMBLE + "\n" + _TASK_STATE_GUIDANCE + "\n" + _JSON_FORMAT
         ),
         keywords=("connector", "port", "cable", "machine", "electronics", "component", "panel"),
         strong_keywords=(

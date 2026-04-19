@@ -1,10 +1,78 @@
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args
 
 from pydantic import BaseModel, Field, TypeAdapter, field_validator
 
 from .guidance_modes import DEFAULT_GUIDANCE_MODE, normalize_guidance_mode
+
+
+SetupType = Literal[
+    "general_task",
+    "home_repair",
+    "plumbing_repair",
+    "electrical_repair",
+    "plant_care",
+    "exercise_form",
+    "cooking_task",
+    "car_maintenance",
+    "machine_setup",
+    "pc_build",
+    "display_setup",
+    "network_setup",
+    "peripheral_setup",
+    "unknown",
+]
+
+TaskPhase = Literal[
+    "identify",
+    "inspect",
+    "prepare",
+    "connect",
+    "act",
+    "adjust",
+    "verify",
+    "troubleshoot",
+    "complete",
+]
+
+ComponentKind = Literal[
+    "port",
+    "cable",
+    "component",
+    "slot",
+    "header",
+    "device",
+    "part",
+    "tool",
+    "fixture",
+    "fastener",
+    "plant",
+    "soil",
+    "body_position",
+    "food",
+    "equipment",
+    "vehicle_part",
+    "unknown",
+]
+
+TroubleshootingFocus = Literal[
+    "safety_check",
+    "no_display",
+    "no_power",
+    "not_detected",
+    "network_issue",
+    "plant_health",
+    "form_risk",
+    "doneness",
+    "diagnosis",
+    "repair_issue",
+]
+
+_SETUP_TYPES: frozenset[str] = frozenset(get_args(SetupType))
+_TASK_PHASES: frozenset[str] = frozenset(get_args(TaskPhase))
+_COMPONENT_KINDS: frozenset[str] = frozenset(get_args(ComponentKind))
+_TROUBLESHOOTING_FOCUSES: frozenset[str] = frozenset(get_args(TroubleshootingFocus))
 
 
 class APIKeyRequest(BaseModel):
@@ -72,30 +140,47 @@ class TaskChecklistItem(BaseModel):
 
 class DetectedComponent(BaseModel):
     label: str = Field(min_length=1)
-    kind: Literal["port", "cable", "component", "slot", "header", "device", "unknown"] = "unknown"
+    kind: ComponentKind = "unknown"
     confidence: Literal["low", "medium", "high"] = "medium"
     x: float | None = Field(default=None, ge=0.0, le=1.0)
     y: float | None = Field(default=None, ge=0.0, le=1.0)
 
+    @field_validator("kind", mode="before")
+    @classmethod
+    def validate_kind(cls, value: object) -> str:
+        if isinstance(value, str) and value in _COMPONENT_KINDS:
+            return value
+        return "unknown"
+
 
 class TaskState(BaseModel):
-    setupType: Literal[
-        "pc_build",
-        "display_setup",
-        "network_setup",
-        "peripheral_setup",
-        "unknown",
-    ] = "unknown"
-    phase: Literal["identify", "connect", "verify", "troubleshoot", "complete"] = "identify"
+    setupType: SetupType = "unknown"
+    phase: TaskPhase = "identify"
     title: str = "Setup checklist"
     checklist: list[TaskChecklistItem] = Field(default_factory=list)
     visibleComponents: list[DetectedComponent] = Field(default_factory=list)
-    troubleshootingFocus: Literal[
-        "no_display",
-        "no_power",
-        "not_detected",
-        "network_issue",
-    ] | None = None
+    troubleshootingFocus: TroubleshootingFocus | None = None
+
+    @field_validator("setupType", mode="before")
+    @classmethod
+    def validate_setup_type(cls, value: object) -> str:
+        if isinstance(value, str) and value in _SETUP_TYPES:
+            return value
+        return "unknown"
+
+    @field_validator("phase", mode="before")
+    @classmethod
+    def validate_phase(cls, value: object) -> str:
+        if isinstance(value, str) and value in _TASK_PHASES:
+            return value
+        return "identify"
+
+    @field_validator("troubleshootingFocus", mode="before")
+    @classmethod
+    def validate_troubleshooting_focus(cls, value: object) -> str | None:
+        if isinstance(value, str) and value in _TROUBLESHOOTING_FOCUSES:
+            return value
+        return None
 
 
 class AIResponse(BaseModel):

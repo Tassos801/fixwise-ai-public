@@ -762,7 +762,7 @@ struct CameraSessionView: View {
     // MARK: - Task Copilot
 
     private var shouldShowTaskCopilot: Bool {
-        hasStartedSession && selectedGuidanceMode == .machines && sessionState.taskState != nil
+        hasStartedSession && sessionState.taskState != nil
     }
 
     @ViewBuilder
@@ -772,7 +772,7 @@ struct CameraSessionView: View {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: selectedGuidanceMode.systemImage)
                         .font(.headline.weight(.semibold))
-                        .foregroundStyle(.cyan)
+                        .foregroundStyle(taskCopilotTint)
                         .frame(width: 24)
 
                     VStack(alignment: .leading, spacing: 3) {
@@ -837,33 +837,37 @@ struct CameraSessionView: View {
                 }
 
                 if !taskState.visibleComponents.isEmpty || taskState.troubleshootingTitle != nil {
-                    HStack(spacing: 6) {
-                        ForEach(taskState.visibleComponents.prefix(3)) { component in
-                            HStack(spacing: 5) {
-                                Image(systemName: componentIcon(for: component.kind))
-                                    .font(.caption2.weight(.bold))
-                                Text(component.label)
-                                    .font(.caption2.weight(.semibold))
-                                    .lineLimit(1)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(taskState.visibleComponents.prefix(4)) { component in
+                                HStack(spacing: 5) {
+                                    Image(systemName: componentIcon(for: component.kind))
+                                        .font(.caption2.weight(.bold))
+                                    Text(component.label)
+                                        .font(.caption2.weight(.semibold))
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                }
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(Color.black.opacity(0.16), in: Capsule())
                             }
-                            .foregroundStyle(.primary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(Color.black.opacity(0.16), in: Capsule())
-                        }
 
-                        if let troubleshootingTitle = taskState.troubleshootingTitle {
-                            HStack(spacing: 5) {
-                                Image(systemName: "stethoscope")
-                                    .font(.caption2.weight(.bold))
-                                Text(troubleshootingTitle)
-                                    .font(.caption2.weight(.semibold))
-                                    .lineLimit(1)
+                            if let troubleshootingTitle = taskState.troubleshootingTitle {
+                                HStack(spacing: 5) {
+                                    Image(systemName: "stethoscope")
+                                        .font(.caption2.weight(.bold))
+                                    Text(troubleshootingTitle)
+                                        .font(.caption2.weight(.semibold))
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                }
+                                .foregroundStyle(.orange)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(Color.orange.opacity(0.16), in: Capsule())
                             }
-                            .foregroundStyle(.orange)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(Color.orange.opacity(0.16), in: Capsule())
                         }
                     }
                 }
@@ -892,7 +896,7 @@ struct CameraSessionView: View {
         case "done", "complete", "completed":
             return .green
         case "active":
-            return .cyan
+            return taskCopilotTint
         case "blocked":
             return .orange
         default:
@@ -900,8 +904,47 @@ struct CameraSessionView: View {
         }
     }
 
+    private var taskCopilotTint: Color {
+        switch selectedGuidanceMode {
+        case .general:
+            return .blue
+        case .homeRepair:
+            return .orange
+        case .gardening:
+            return .green
+        case .gym:
+            return .mint
+        case .cooking:
+            return .red
+        case .car:
+            return .teal
+        case .machines:
+            return .cyan
+        }
+    }
+
     private func componentIcon(for kind: String) -> String {
         switch kind {
+        case "part":
+            return "scope"
+        case "tool":
+            return "wrench.and.screwdriver"
+        case "fixture":
+            return "house"
+        case "fastener":
+            return "screwdriver"
+        case "plant":
+            return "leaf"
+        case "soil":
+            return "circle.hexagongrid"
+        case "food":
+            return "fork.knife"
+        case "equipment":
+            return "dumbbell"
+        case "vehicle_part":
+            return "car"
+        case "body_position":
+            return "figure.strengthtraining.traditional"
         case "port":
             return "arrow.left.arrow.right"
         case "cable":

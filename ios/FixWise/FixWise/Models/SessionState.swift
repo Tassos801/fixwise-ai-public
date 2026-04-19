@@ -235,6 +235,24 @@ struct GuidanceTaskState: Codable, Equatable {
 
     var setupTypeTitle: String {
         switch setupType {
+        case "general_task":
+            return "Guided task"
+        case "home_repair":
+            return "Home repair"
+        case "plumbing_repair":
+            return "Plumbing repair"
+        case "electrical_repair":
+            return "Electrical repair"
+        case "plant_care":
+            return "Plant care"
+        case "exercise_form":
+            return "Exercise form"
+        case "cooking_task":
+            return "Cooking"
+        case "car_maintenance":
+            return "Car maintenance"
+        case "machine_setup":
+            return "Machine setup"
         case "pc_build":
             return "PC build"
         case "display_setup":
@@ -244,7 +262,7 @@ struct GuidanceTaskState: Codable, Equatable {
         case "peripheral_setup":
             return "Peripheral setup"
         default:
-            return "Tech setup"
+            return setupType.readableTaskLabel
         }
     }
 
@@ -252,8 +270,16 @@ struct GuidanceTaskState: Codable, Equatable {
         switch phase {
         case "identify":
             return "Identify"
+        case "inspect":
+            return "Inspect"
+        case "prepare":
+            return "Prepare"
         case "connect":
             return "Connect"
+        case "act":
+            return "Act"
+        case "adjust":
+            return "Adjust"
         case "verify":
             return "Verify"
         case "troubleshoot":
@@ -261,7 +287,7 @@ struct GuidanceTaskState: Codable, Equatable {
         case "complete":
             return "Complete"
         default:
-            return phase.replacingOccurrences(of: "_", with: " ").capitalized
+            return phase.readableTaskLabel
         }
     }
 
@@ -276,8 +302,20 @@ struct GuidanceTaskState: Codable, Equatable {
             return "Not detected"
         case "network_issue":
             return "Network issue"
+        case "safety_check":
+            return "Safety check"
+        case "plant_health":
+            return "Plant health"
+        case "form_risk":
+            return "Form risk"
+        case "doneness":
+            return "Doneness"
+        case "diagnosis":
+            return "Diagnosis"
+        case "repair_issue":
+            return "Repair issue"
         default:
-            return troubleshootingFocus.replacingOccurrences(of: "_", with: " ").capitalized
+            return troubleshootingFocus.readableTaskLabel
         }
     }
 }
@@ -541,5 +579,13 @@ final class SessionState: ObservableObject {
 extension String {
     var normalizedTaskStatus: String {
         trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    var readableTaskLabel: String {
+        let words = replacingOccurrences(of: "_", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard let first = words.first else { return "" }
+        return String(first).uppercased() + words.dropFirst()
     }
 }

@@ -40,7 +40,7 @@ from .logging_config import RequestIdMiddleware, setup_logging
 from .database import Database
 from .encryption import decrypt_api_key, encrypt_api_key, mask_api_key
 from .guidance_modes import normalize_guidance_mode, suggest_guidance_mode
-from .tts import generate_tts_audio_base64
+from .tts import generate_tts_audio_base64, get_tts_runtime_status
 from .models import (
     APIKeyRequest,
     EndSessionMessage,
@@ -51,7 +51,6 @@ from .models import (
     SafetyBlockMessage,
     parse_client_message,
 )
-from .pc_setup_brain import enrich_pc_setup_response
 from .pdf_report import generate_fix_report
 from .rate_limit import (
     InMemoryRateLimiter,
@@ -63,6 +62,7 @@ from .rate_limit import (
 from .safety import check_safety
 from .security_headers import SecurityHeadersMiddleware
 from .session_manager import SessionManager
+from .task_brain import enrich_task_response
 from .tier_enforcement import check_session_duration, check_session_quota
 
 
@@ -200,6 +200,7 @@ def create_app(
                 "model": resolved_settings.active_ai_model,
                 "availability": availability,
             },
+            "tts": get_tts_runtime_status(resolved_settings),
             "database": {
                 "status": "connected" if db_ok else "unreachable",
             },
@@ -710,7 +711,7 @@ def create_app(
                             )
                             continue
 
-                    ai_response = enrich_pc_setup_response(
+                    ai_response = enrich_task_response(
                         response=ai_response,
                         prompt=message.text,
                         mode=selected_mode,

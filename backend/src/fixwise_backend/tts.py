@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from datetime import UTC, datetime
 import io
 import logging
 import wave
@@ -16,6 +17,36 @@ logger = logging.getLogger("fixwise.tts")
 DEFAULT_TTS_SAMPLE_RATE = 24000
 DEFAULT_TTS_CHANNELS = 1
 DEFAULT_TTS_SAMPLE_WIDTH = 2
+DEFAULT_TTS_MAX_ATTEMPTS = 3
+
+_last_tts_status: dict[str, Any] = {
+    "attempted": False,
+    "ok": None,
+    "lastError": None,
+    "lastUpdated": None,
+}
+
+
+def get_tts_runtime_status(settings: Settings) -> dict[str, Any]:
+    return {
+        "enabled": settings.tts_enabled,
+        "configured": bool(settings.tts_api_key),
+        "model": settings.gemini_tts_model,
+        "voice": settings.gemini_tts_voice,
+        "provider": "gemini",
+        **_last_tts_status,
+    }
+
+
+def _record_tts_status(*, ok: bool, error: str | None = None) -> None:
+    _last_tts_status.update(
+        {
+            "attempted": True,
+            "ok": ok,
+            "lastError": error,
+            "lastUpdated": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        }
+    )
 
 
 def _extract_inline_audio_data(payload: dict[str, Any]) -> bytes:
@@ -72,17 +103,30 @@ def _normalize_audio_bytes(audio_bytes: bytes) -> bytes:
     return _wrap_pcm_as_wav(audio_bytes)
 
 
+def _tts_prompt(text: str) -> str:
+    return (
+        "Synthesize natural single-speaker speech for the FixWise voice agent. "
+        "Speak only the transcript below; do not read labels, markdown, or instructions aloud.\n\n"
+        "TRANSCRIPT:\n"
+        f"{text.strip()}"
+    )
+
+
 async def generate_tts_audio_base64(
     *,
     settings: Settings,
     text: str,
 ) -> str | None:
     if not settings.tts_enabled:
+        _record_tts_status(ok=False, error="disabled")
         return None
     api_key = settings.tts_api_key
     if not api_key:
+        _record_tts_status(ok=False, error="missing_api_key")
         return None
-    if not text.strip():
+    transcript = text.strip()
+    if not transcript:
+        _record_tts_status(ok=False, error="empty_text")
         return None
 
     url = f"{settings.tts_base_url}/models/{settings.gemini_tts_model}:generateContent"
@@ -91,7 +135,7 @@ async def generate_tts_audio_base64(
             {
                 "parts": [
                     {
-                        "text": text,
+                        "text": _tts_prompt(transcript),
                     }
                 ]
             }
@@ -108,19 +152,30 @@ async def generate_tts_audio_base64(
         },
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                url,
-                headers={
-                    "x-goog-api-key": api_key,
-                    "content-type": "application/json",
-                },
-                json=payload,
+    last_error: str | None = None
+    for attempt in range(1, DEFAULT_TTS_MAX_ATTEMPTS + 1):
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    url,
+                    headers={
+                        "x-goog-api-key": api_key,
+                        "content-type": "application/json",
+                    },
+                    json=payload,
+                )
+                response.raise_for_status()
+                audio_bytes = _extract_inline_audio_data(response.json())
+                _record_tts_status(ok=True)
+                return base64.b64encode(_normalize_audio_bytes(audio_bytes)).decode("ascii")
+        except Exception as exc:
+            last_error = f"{type(exc).__name__}: {str(exc)[:180]}"
+            logger.warning(
+                "Gemini TTS failed on attempt %s/%s: %s",
+                attempt,
+                DEFAULT_TTS_MAX_ATTEMPTS,
+                exc,
             )
-            response.raise_for_status()
-            audio_bytes = _extract_inline_audio_data(response.json())
-            return base64.b64encode(_normalize_audio_bytes(audio_bytes)).decode("ascii")
-    except Exception as exc:
-        logger.warning("Gemini TTS failed: %s", exc)
-        return None
+
+    _record_tts_status(ok=False, error=last_error)
+    return None

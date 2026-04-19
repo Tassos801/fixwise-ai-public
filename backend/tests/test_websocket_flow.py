@@ -355,6 +355,45 @@ class WebSocketFlowTests(unittest.TestCase):
         self.assertEqual(response["taskState"]["phase"], "connect")
         self.assertTrue(response["taskState"]["checklist"])
 
+    def test_cooking_mode_response_includes_task_state(self):
+        provider = RecordingProvider()
+        app = create_app(
+            Settings(ai_mode="mock", openai_api_key=None, database_path=":memory:"),
+            provider=provider,
+        )
+
+        with TestClient(app) as client:
+            with client.websocket_connect("/ws/session") as websocket:
+                websocket.send_json(
+                    {
+                        "type": "frame",
+                        "sessionId": "session-cooking-task",
+                        "timestamp": 1.0,
+                        "frame": "ZmFrZS1qcGVn",
+                        "frameMetadata": {
+                            "width": 512,
+                            "height": 512,
+                            "sceneDelta": 0.11,
+                        },
+                    }
+                )
+                websocket.send_json(
+                    {
+                        "type": "prompt",
+                        "sessionId": "session-cooking-task",
+                        "timestamp": 2.0,
+                        "text": "Is this chicken ready to flip in the pan?",
+                        "mode": "cooking",
+                    }
+                )
+
+                response = websocket.receive_json()
+
+        self.assertEqual(response["mode"], "cooking")
+        self.assertIn("taskState", response)
+        self.assertEqual(response["taskState"]["setupType"], "cooking_task")
+        self.assertTrue(response["taskState"]["checklist"])
+
     def test_guest_websocket_sessions_are_isolated_identities(self):
         db = Database(":memory:")
         app = create_app(
@@ -411,6 +450,8 @@ class WebSocketFlowTests(unittest.TestCase):
         self.assertEqual(health.status_code, 200)
         self.assertEqual(health.json()["provider"], "mock")
         self.assertFalse(health.json()["liveReady"])
+        self.assertIn("tts", health.json())
+        self.assertFalse(health.json()["tts"]["configured"])
 
     def test_production_auto_mode_without_key_reports_unavailable(self):
         with patch.dict(
@@ -437,6 +478,7 @@ class WebSocketFlowTests(unittest.TestCase):
         self.assertEqual(health.json()["provider"], "unavailable")
         self.assertEqual(health.json()["availability"], "unavailable")
         self.assertFalse(health.json()["liveReady"])
+        self.assertIn("tts", health.json())
 
     def test_safety_block_is_returned_for_prohibited_prompt(self):
         app = create_app(Settings(ai_mode="mock", openai_api_key=None))

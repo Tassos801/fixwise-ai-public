@@ -22,6 +22,8 @@ services:
         value: true
       - key: GEMINI_TTS_MODEL
         value: gemini-3.1-flash-tts-preview
+      - key: GEMINI_TTS_FALLBACK_MODEL
+        value: gemini-2.5-flash-preview-tts
       - key: GEMINI_TTS_VOICE
         value: Kore
       - key: FIXWISE_ALLOWED_ORIGINS

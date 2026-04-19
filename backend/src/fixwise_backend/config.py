@@ -18,6 +18,7 @@ VALID_AI_PROVIDERS = {"openai", "gemma"}
 DEFAULT_DATABASE_PATH = str(Path(__file__).resolve().parents[2] / "fixwise.db")
 DEFAULT_GEMMA_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 DEFAULT_GEMINI_TTS_MODEL = "gemini-3.1-flash-tts-preview"
+DEFAULT_GEMINI_TTS_FALLBACK_MODEL = "gemini-2.5-flash-preview-tts"
 DEFAULT_GEMINI_TTS_VOICE = "Kore"
 DEV_JWT_SECRET = "dev-secret-change-in-production-local"
 MIN_JWT_SECRET_LENGTH = 32
@@ -65,6 +66,7 @@ class Settings:
     gemma_base_url: str = DEFAULT_GEMMA_BASE_URL
     tts_enabled: bool = True
     gemini_tts_model: str = DEFAULT_GEMINI_TTS_MODEL
+    gemini_tts_fallback_model: str | None = DEFAULT_GEMINI_TTS_FALLBACK_MODEL
     gemini_tts_voice: str = DEFAULT_GEMINI_TTS_VOICE
     environment: str = "development"
     database_path: str | None = None
@@ -210,6 +212,12 @@ class Settings:
                 or DEFAULT_GEMINI_TTS_MODEL
             ).strip()
             or DEFAULT_GEMINI_TTS_MODEL,
+            gemini_tts_fallback_model=(
+                os.getenv("GEMINI_TTS_FALLBACK_MODEL")
+                or os.getenv("FIXWISE_GEMINI_TTS_FALLBACK_MODEL")
+                or DEFAULT_GEMINI_TTS_FALLBACK_MODEL
+            ).strip()
+            or None,
             gemini_tts_voice=(
                 os.getenv("GEMINI_TTS_VOICE")
                 or os.getenv("FIXWISE_GEMINI_TTS_VOICE")

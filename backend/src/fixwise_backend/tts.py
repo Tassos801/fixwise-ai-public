@@ -22,6 +22,7 @@ DEFAULT_TTS_MAX_ATTEMPTS = 3
 _last_tts_status: dict[str, Any] = {
     "attempted": False,
     "ok": None,
+    "lastModel": None,
     "lastError": None,
     "lastUpdated": None,
 }
@@ -32,17 +33,19 @@ def get_tts_runtime_status(settings: Settings) -> dict[str, Any]:
         "enabled": settings.tts_enabled,
         "configured": bool(settings.tts_api_key),
         "model": settings.gemini_tts_model,
+        "fallbackModel": settings.gemini_tts_fallback_model,
         "voice": settings.gemini_tts_voice,
         "provider": "gemini",
         **_last_tts_status,
     }
 
 
-def _record_tts_status(*, ok: bool, error: str | None = None) -> None:
+def _record_tts_status(*, ok: bool, model: str | None, error: str | None = None) -> None:
     _last_tts_status.update(
         {
             "attempted": True,
             "ok": ok,
+            "lastModel": model,
             "lastError": error,
             "lastUpdated": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         }
@@ -112,24 +115,31 @@ def _tts_prompt(text: str) -> str:
     )
 
 
+def _candidate_models(settings: Settings) -> list[str]:
+    models = [settings.gemini_tts_model]
+    fallback = settings.gemini_tts_fallback_model
+    if fallback and fallback not in models:
+        models.append(fallback)
+    return models
+
+
 async def generate_tts_audio_base64(
     *,
     settings: Settings,
     text: str,
 ) -> str | None:
     if not settings.tts_enabled:
-        _record_tts_status(ok=False, error="disabled")
+        _record_tts_status(ok=False, model=None, error="disabled")
         return None
     api_key = settings.tts_api_key
     if not api_key:
-        _record_tts_status(ok=False, error="missing_api_key")
+        _record_tts_status(ok=False, model=None, error="missing_api_key")
         return None
     transcript = text.strip()
     if not transcript:
-        _record_tts_status(ok=False, error="empty_text")
+        _record_tts_status(ok=False, model=None, error="empty_text")
         return None
 
-    url = f"{settings.tts_base_url}/models/{settings.gemini_tts_model}:generateContent"
     payload = {
         "contents": [
             {
@@ -153,29 +163,45 @@ async def generate_tts_audio_base64(
     }
 
     last_error: str | None = None
-    for attempt in range(1, DEFAULT_TTS_MAX_ATTEMPTS + 1):
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    url,
-                    headers={
-                        "x-goog-api-key": api_key,
-                        "content-type": "application/json",
-                    },
-                    json=payload,
+    last_model: str | None = None
+    for model in _candidate_models(settings):
+        url = f"{settings.tts_base_url}/models/{model}:generateContent"
+        last_model = model
+        for attempt in range(1, DEFAULT_TTS_MAX_ATTEMPTS + 1):
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.post(
+                        url,
+                        headers={
+                            "x-goog-api-key": api_key,
+                            "content-type": "application/json",
+                        },
+                        json=payload,
+                    )
+                    response.raise_for_status()
+                    audio_bytes = _extract_inline_audio_data(response.json())
+                    _record_tts_status(ok=True, model=model)
+                    return base64.b64encode(_normalize_audio_bytes(audio_bytes)).decode("ascii")
+            except httpx.HTTPStatusError as exc:
+                last_error = f"{type(exc).__name__}: {str(exc)[:180]}"
+                logger.warning(
+                    "Gemini TTS failed for %s on attempt %s/%s: %s",
+                    model,
+                    attempt,
+                    DEFAULT_TTS_MAX_ATTEMPTS,
+                    exc,
                 )
-                response.raise_for_status()
-                audio_bytes = _extract_inline_audio_data(response.json())
-                _record_tts_status(ok=True)
-                return base64.b64encode(_normalize_audio_bytes(audio_bytes)).decode("ascii")
-        except Exception as exc:
-            last_error = f"{type(exc).__name__}: {str(exc)[:180]}"
-            logger.warning(
-                "Gemini TTS failed on attempt %s/%s: %s",
-                attempt,
-                DEFAULT_TTS_MAX_ATTEMPTS,
-                exc,
-            )
+                if exc.response.status_code == 429:
+                    break
+            except Exception as exc:
+                last_error = f"{type(exc).__name__}: {str(exc)[:180]}"
+                logger.warning(
+                    "Gemini TTS failed for %s on attempt %s/%s: %s",
+                    model,
+                    attempt,
+                    DEFAULT_TTS_MAX_ATTEMPTS,
+                    exc,
+                )
 
-    _record_tts_status(ok=False, error=last_error)
+    _record_tts_status(ok=False, model=last_model, error=last_error)
     return None

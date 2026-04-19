@@ -4,6 +4,7 @@ import base64
 from datetime import UTC, datetime
 import io
 import logging
+import time
 import wave
 from typing import Any
 
@@ -18,6 +19,7 @@ DEFAULT_TTS_SAMPLE_RATE = 24000
 DEFAULT_TTS_CHANNELS = 1
 DEFAULT_TTS_SAMPLE_WIDTH = 2
 DEFAULT_TTS_MAX_ATTEMPTS = 3
+DEFAULT_TTS_RATE_LIMIT_COOLDOWN_SECONDS = 120
 
 _last_tts_status: dict[str, Any] = {
     "attempted": False,
@@ -26,6 +28,20 @@ _last_tts_status: dict[str, Any] = {
     "lastError": None,
     "lastUpdated": None,
 }
+_model_cooldowns: dict[str, float] = {}
+
+
+def reset_tts_runtime_state() -> None:
+    _model_cooldowns.clear()
+    _last_tts_status.update(
+        {
+            "attempted": False,
+            "ok": None,
+            "lastModel": None,
+            "lastError": None,
+            "lastUpdated": None,
+        }
+    )
 
 
 def get_tts_runtime_status(settings: Settings) -> dict[str, Any]:
@@ -36,6 +52,7 @@ def get_tts_runtime_status(settings: Settings) -> dict[str, Any]:
         "fallbackModel": settings.gemini_tts_fallback_model,
         "voice": settings.gemini_tts_voice,
         "provider": "gemini",
+        "cooldowns": _active_cooldowns(),
         **_last_tts_status,
     }
 
@@ -115,12 +132,39 @@ def _tts_prompt(text: str) -> str:
     )
 
 
+def _active_cooldowns() -> dict[str, int]:
+    now = time.monotonic()
+    active: dict[str, int] = {}
+    expired = [model for model, expires_at in _model_cooldowns.items() if expires_at <= now]
+    for model in expired:
+        _model_cooldowns.pop(model, None)
+    for model, expires_at in _model_cooldowns.items():
+        active[model] = max(0, round(expires_at - now))
+    return active
+
+
+def _retry_after_seconds(response: httpx.Response) -> int:
+    retry_after = response.headers.get("retry-after")
+    if retry_after is not None:
+        try:
+            return max(1, min(int(retry_after), 300))
+        except ValueError:
+            pass
+    return DEFAULT_TTS_RATE_LIMIT_COOLDOWN_SECONDS
+
+
+def _mark_model_rate_limited(model: str, response: httpx.Response) -> None:
+    _model_cooldowns[model] = time.monotonic() + _retry_after_seconds(response)
+
+
 def _candidate_models(settings: Settings) -> list[str]:
     models = [settings.gemini_tts_model]
     fallback = settings.gemini_tts_fallback_model
     if fallback and fallback not in models:
         models.append(fallback)
-    return models
+    active_cooldowns = _active_cooldowns()
+    available_models = [model for model in models if model not in active_cooldowns]
+    return available_models or models
 
 
 async def generate_tts_audio_base64(
@@ -192,6 +236,7 @@ async def generate_tts_audio_base64(
                     exc,
                 )
                 if exc.response.status_code == 429:
+                    _mark_model_rate_limited(model, exc.response)
                     break
             except Exception as exc:
                 last_error = f"{type(exc).__name__}: {str(exc)[:180]}"

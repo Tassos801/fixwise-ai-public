@@ -1,0 +1,19 @@
+name: Warm Render backend
+
+on:
+  schedule:
+    # Every 10 minutes — Render free tier spins down after ~15 min idle.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit /health
+        run: |
+          curl --fail --max-time 60 --retry 2 --retry-delay 10 \
+            https://fixwise-backend.onrender.com/health

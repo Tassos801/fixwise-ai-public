@@ -104,6 +104,11 @@ struct CameraSessionView: View {
     @State private var guidanceToastText: String = ""
     @State private var guidanceToastVisible = false
     @State private var guidanceToastWorkItem: DispatchWorkItem?
+    /// Shows a "Waking backend…" hint when the WebSocket has been in a
+    /// connecting state long enough that a Render free-tier cold start is
+    /// the most likely cause.
+    @State private var isBackendWarming = false
+    @State private var warmingHintTask: Task<Void, Never>?
 
     // MARK: - Camera UI State (zoom / focus / flash)
     /// Zoom factor at the start of the current pinch gesture.
@@ -586,7 +591,7 @@ struct CameraSessionView: View {
         if speechCaptureService.isRecording { return "Listening" }
         if speechPlaybackService.isSpeaking { return "Speaking" }
         switch sessionState.phase {
-        case .connecting: return "Connecting"
+        case .connecting: return isBackendWarming ? "Waking backend…" : "Connecting"
         case .active(.processing): return "Thinking"
         case .active(.responding): return "Guiding"
         case .ending: return "Ending"
@@ -1302,16 +1307,39 @@ struct CameraSessionView: View {
         case .connected:
             hasConnectedOnce = true
             sessionState.didConnect()
+            cancelWarmingHint()
         case .connecting, .reconnecting:
             hasSentSceneFrame = false
             if !sessionState.isTerminal {
                 sessionState.phase = .connecting
             }
+            scheduleWarmingHint()
         case .disconnected where hasStartedSession && hasConnectedOnce:
             hasSentSceneFrame = false
+            cancelWarmingHint()
         case .disconnected:
             hasSentSceneFrame = false
-            break
+            cancelWarmingHint()
+        }
+    }
+
+    private func scheduleWarmingHint() {
+        guard warmingHintTask == nil, !isBackendWarming else { return }
+        warmingHintTask = Task { @MainActor in
+            // Render free-tier spin-up is ~15–25s. Anything past ~2.5s of
+            // "connecting" on a cold start is almost certainly that, so we
+            // surface a calmer "Waking backend…" copy to set expectations.
+            try? await Task.sleep(for: .milliseconds(2500))
+            guard !Task.isCancelled else { return }
+            withAnimation { isBackendWarming = true }
+        }
+    }
+
+    private func cancelWarmingHint() {
+        warmingHintTask?.cancel()
+        warmingHintTask = nil
+        if isBackendWarming {
+            withAnimation { isBackendWarming = false }
         }
     }
 

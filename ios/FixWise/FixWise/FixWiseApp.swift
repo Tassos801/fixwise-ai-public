@@ -37,17 +37,12 @@ struct FixWiseApp: App {
 
 private struct RootContentView: View {
     @Binding var hasCompletedOnboarding: Bool
-    @EnvironmentObject private var backendConfiguration: BackendConfigurationStore
-    @EnvironmentObject private var authStore: AuthStore
-    @EnvironmentObject private var webSocketService: WebSocketService
 
     var body: some View {
-        Group {
-            if hasCompletedOnboarding {
-                CameraSessionView()
-            } else {
-                OnboardingView()
-            }
+        if hasCompletedOnboarding {
+            CameraSessionView()
+        } else {
+            OnboardingView()
         }
     }
 }
